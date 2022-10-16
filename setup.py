@@ -53,6 +53,7 @@ extras_require = {
 
 packages = [
     "discord",
+    "discord.types",
     "discord.ext.commands",
     "discord.ext.tasks",
     "discord.ext.utils",
