@@ -294,5 +294,41 @@ class Colour:
         .. versionadded:: 1.7.69
         """
         return cls(0xFEE75C)
+    
+    @classmethod
+    def nitro_pink(cls):
+        """A factory method that returns a :class:`Colour` with a value of ``0xF47FFF``.
+        
+        .. versionadded:: 1.7.69
+        """
+        return cls(0xF47FFF)
+    
+    @classmethod
+    def embed_bg(cls, theme: str = "dark"):
+        """
+        A factory method that returns a :class:`Colour` corresponding to the embed
+        colors on discord clients, with a value of:
+        
+        - ``0x2F3136`` (dark)
+        - ``0xf2f3f5`` (light)
+        - ``0x000000`` (amoled).
+        
+        .. versionadded:: 1.7.69
+        
+        Parameters
+        ----------
+        theme: :class:`str`
+            The theme color to apply, must be one of "dark", "light", or "amoled".
+        """
+        themes_cls = {
+            "dark": 0x2F3136,
+            "light": 0xF2F3F5,
+            "amoled": 0x000000,
+        }
+        
+        if theme not in themes_cls:
+            raise TypeError("Theme must be 'dark', 'light' or 'amoled'.")
+        
+        return cls(themes_cls[theme])
 
 Color = Colour
