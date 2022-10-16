@@ -61,8 +61,11 @@ from typing import (
     overload,
     TYPE_CHECKING,
 )
+from typing_extensions import ParamSpec, Self
 
 from .errors import InvalidArgument
+from .permissions import Permissions
+from .template import Template
 
 DISCORD_EPOCH = 1420070400000
 MAX_ASYNCIO_SECONDS = 3456000
@@ -85,7 +88,7 @@ class _MissingSentinel:
 MISSING: Any = _MissingSentinel()
 
 
-class _cached_property:
+class cached_property:
     def __init__(self, function):
         self.function = function
         self.__doc__ = getattr(function, "__doc__")
@@ -100,33 +103,18 @@ class _cached_property:
         return value
 
 
-if TYPE_CHECKING:
-    from functools import cached_property as cached_property
-
-    from typing_extensions import ParamSpec, Self
-
-    from .permissions import Permissions
-    from .template import Template
-
-    class _RequestLike(Protocol):
-        headers: Mapping[str, Any]
-
-    P = ParamSpec("P")
-
-    MaybeAwaitableFunc = Callable[P, "MaybeAwaitable[T]"]
-
-    _SnowflakeListBase = array.array[int]
-
-else:
-    cached_property = _cached_property
-    _SnowflakeListBase = array.array
-
 T = TypeVar("T")
 P = ParamSpec("P")
 T_co = TypeVar("T_co", covariant=True)
 _Iter = Union[Iterable[T], AsyncIterable[T]]
 Coro = Coroutine[Any, Any, T]
 MaybeAwaitable = Union[T, Awaitable[T]]
+MaybeAwaitableFunc = Callable[P, "MaybeAwaitable[T]"]
+
+_SnowflakeListBase = array.array[int]
+
+class _RequestLike(Protocol):
+    headers: Mapping[str, Any]
 
 
 class CachedSlotProperty(Generic[T, T_co]):
