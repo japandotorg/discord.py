@@ -122,6 +122,7 @@ else:
     _SnowflakeListBase = array.array
 
 T = TypeVar("T")
+P = ParamSpec("P")
 T_co = TypeVar("T_co", covariant=True)
 _Iter = Union[Iterable[T], AsyncIterable[T]]
 Coro = Coroutine[Any, Any, T]
