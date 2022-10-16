@@ -24,6 +24,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
+import time
 import array
 import asyncio
 import unicodedata
@@ -36,6 +37,7 @@ from operator import attrgetter
 import json
 import re
 import warnings
+import uuid as uuid_
 
 from typing import (
     AsyncIterator,
@@ -227,7 +229,7 @@ def warn_deprecated(
     """
     Warn about a deprecated function, with the ability to specify details about the deprecation. Emits a
     DeprecationWarning.
-    
+
     Parameters
     ----------
     name: str
@@ -244,10 +246,10 @@ def warn_deprecated(
         A reference that explains the deprecation, typically a URL to a page such as a changelog entry or a GitHub
         issue/PR.
     """
-    warnings.simplefilter("always", DeprecationWarning) # turn off filter
-    
+    warnings.simplefilter("always", DeprecationWarning)  # turn off filter
+
     message = f"{name} is deprecated"
-    
+
     if since:
         message += f" since version {since}"
     if removed:
@@ -257,7 +259,7 @@ def warn_deprecated(
     message += "."
     if reference:
         message += f" See {reference} for more information."
-        
+
     warnings.warn(message, stacklevel=3, category=DeprecationWarning)
     warnings.simplefilter("default", DeprecationWarning)
 
@@ -636,12 +638,13 @@ def get(iterable, **attrs):
             return elem
     return None
 
+
 async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> Any:
     """|coro|
-    
+
     Attempts to get an attribute from the object in cache. If it fails, it will attempt to fetch it.
     If the fetch also fails, an error will be raised.
-    
+
     Parameters
     ----------
     obj: Any
@@ -652,12 +655,12 @@ async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> An
         The ID of the object
     default: Any
         The default value to return if the object is not found, instead of raising an error.
-    
+
     Returns
     -------
     Any
         The object found or the default value.
-    
+
     Raises
     ------
     :exc:`AttributeError`
@@ -668,7 +671,7 @@ async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> An
         An error occurred fetching the object
     :exc:`Forbidden`
         You do not have permission to fetch the object
-    
+
     Examples
     --------
     Getting a guild from a guild ID: ::
@@ -677,7 +680,7 @@ async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> An
         channel = await utils.get_or_fetch(guild, 'channel', channel_id, default=None)
     """
     getter = getattr(obj, f"get_{attr}")(id)
-    
+
     if getter is None:
         try:
             getter = await getattr(obj, f"fetch_{attr}")(id)
@@ -690,7 +693,7 @@ async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> An
                 return default
             else:
                 raise
-    
+
     return getter
 
 
@@ -849,6 +852,41 @@ def utcnow() -> datetime.datetime:
         The current aware datetime in UTC.
     """
     return datetime.datetime.now(datetime.timezone.utc)
+
+
+def local_time() -> datetime.datetime:
+    """
+    A helper function to return the current datetime for the system's timezone.
+
+    .. versionadded:: 1.7.69
+
+    Returns
+    -------
+    :class:`datetime.datetime`
+        The current datetime for the system's timezone.
+    """
+    return utcnow().astimezone()
+
+
+def monotonic() -> int:
+    """
+    Performance counter for benchmarking.
+    """
+    return time.perf_counter()  # type: ignore
+
+
+def monotonic_ns() -> int:
+    """
+    Performance counter for benchmarking as nanoseconds.
+    """
+    return time.perf_counter_ns()
+
+
+def uuid() -> str:
+    """
+    Generates an unique UUID (1ns precision).
+    """
+    return uuid_.uuid1(None, monotonic_ns()).hex
 
 
 def valid_icon_size(size: int) -> bool:
@@ -1300,17 +1338,18 @@ def format_dt(dt: datetime.datetime, /, style: Optional[TimestampStyle] = None) 
         return f"<t:{int(dt.timestamp())}>"
     return f"<t:{int(dt.timestamp())}:{style}>"
 
+
 def generate_snowflake(dt: Union[datetime.datetime, None] = None) -> int:
     """
     Returns a numeric snowflake pretending to be created at the given date but more accurate and random
     than :func:`time_snowflake`. If dt is not passed, it makes one from the current time using utcnow.
-    
+
     Parameters
     ----------
     dt: :class:`datetime.datetime`
         A datetime object to convert to a snowflake.
         If naive, the timezone is assumed to be local time.
-    
+
     Returns
     -------
     :class:`int`
