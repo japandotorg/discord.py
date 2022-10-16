@@ -25,9 +25,19 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import datetime
+from typing import (
+    Optional,
+    Union,
+    Any,
+    Dict,
+    Literal,
+    ClassVar,
+)
 
 from . import utils
 from .colour import Colour
+from .file import File
+from .utils import MISSING
 
 class _EmptyEmbed:
     def __bool__(self):
@@ -53,6 +63,8 @@ class EmbedProxy:
 
     def __getattr__(self, attr):
         return EmptyEmbed
+    
+_FileKey = Literal["image", "thumbnail"]
 
 class Embed:
     """Represents a Discord embed.
@@ -99,11 +111,26 @@ class Embed:
         to denote that the value or attribute is empty.
     """
 
-    __slots__ = ('title', 'url', 'type', '_timestamp', '_colour', '_footer',
-                 '_image', '_thumbnail', '_video', '_provider', '_author',
-                 '_fields', 'description')
+    __slots__ = (
+        'title', 
+        'url', 
+        'type', 
+        '_timestamp', 
+        '_colour', 
+        '_footer',
+        '_image', 
+        '_thumbnail', 
+        '_video', 
+        '_provider', 
+        '_author',
+        '_fields', 
+        'description',
+        '_files',
+    )
 
     Empty = EmptyEmbed
+    
+    _default_colour: ClassVar[Optional[Colour]] = None
 
     def __init__(self, **kwargs):
         # swap the colour/color aliases
@@ -133,6 +160,8 @@ class Embed:
             pass
         else:
             self.timestamp = timestamp
+            
+        self._files: Dict[_FileKey, File] = {}
 
     @classmethod
     def from_dict(cls, data):
@@ -616,3 +645,119 @@ class Embed:
             result['title'] = self.title
 
         return result
+    
+    @classmethod
+    def set_default_colour(cls, value: Optional[Union[int, Colour]]):
+        """
+        Set the default colour of all new embeds.
+        
+        .. versionadded:: 1.7.69
+        
+        Returns
+        -------
+        Optional[:class:`Colour`]
+            The colour that was set.
+        """
+        if value is None or isinstance(value, Colour):
+            cls._default_colour = value
+        elif isinstance(value, int):
+            cls._default_colour = Colour(value=value)
+        else:
+            raise TypeError(
+                f"Expected discord.Color, int, or None but recieved {type(value).__name__} instead."
+            )
+        
+        return cls._default_colour
+    
+    set_default_color = set_default_colour
+    
+    @classmethod
+    def get_default_colour(cls) -> Optional[Colour]:
+        """
+        Get the default colour of all new embeds.
+        
+        .. versionadded:: 1.7.69
+        
+        Returns
+        -------
+        Optional[:class:`Colour`]
+            The default colour.
+        """
+        return cls._default_colour
+
+    get_default_color = get_default_colour
+    
+    def _handle_resource(self, url: Optional[Any], file: File, *, key: _FileKey) -> Optional[str]:
+        if not (url is MISSING) ^ (file is MISSING):
+            raise TypeError("Exactly one of url or file must be provided")
+
+        if file:
+            if file.filename is None:
+                raise TypeError("File must have a filename")
+            self._files[key] = file
+            return f"attachment://{file.filename}"
+        else:
+            self._files.pop(key, None)
+            return str(url) if url is not None else None
+
+    def check_limits(self) -> None:
+        """
+        Checks if this embed fits within the limits dictated by Discord.
+        There is also a 6000 character limit across all embeds in a message.
+        
+        Returns nothing on success, raises :exc:`ValueError` if an attribute exceeds the limits.
+        
+        +--------------------------+------------------------------------+
+        |   Field                  |              Limit                 |
+        +--------------------------+------------------------------------+
+        | title                    |        256 characters              |
+        +--------------------------+------------------------------------+
+        | description              |        4096 characters             |
+        +--------------------------+------------------------------------+
+        | fields                   |        Up to 25 field objects      |
+        +--------------------------+------------------------------------+
+        | field.name               |        256 characters              |
+        +--------------------------+------------------------------------+
+        | field.value              |        1024 characters             |
+        +--------------------------+------------------------------------+
+        | footer.text              |        2048 characters             |
+        +--------------------------+------------------------------------+
+        | author.name              |        256 characters              |
+        +--------------------------+------------------------------------+
+        
+        .. versionadded:: 1.7.69
+        
+        Raises
+        ------
+        ValueError
+            One or more of the embed attributes are too long.
+        """
+
+        if self.title and len(self.title) > 256:
+            raise ValueError("Embed title cannot be longer than 256 characters")
+
+        if self.description and len(self.description) > 4096:
+            raise ValueError("Embed description cannot be longer than 4096 characters")
+
+        if self._footer and len(self._footer.get("text", "").strip()) > 2048:
+            raise ValueError("Embed footer text cannot be longer than 2048 characters")
+
+        if self._author and len(self._author.get("name", "").strip()) > 256:
+            raise ValueError("Embed author name cannot be longer than 256 characters")
+
+        if self._fields:
+            if len(self._fields) > 25:
+                raise ValueError("Embeds cannot have more than 25 fields")
+
+            for field_index, field in enumerate(self._fields):
+                if len(field["name"].strip()) > 256:
+                    raise ValueError(
+                        f"Embed field {field_index} name cannot be longer than 256 characters"
+                    )
+                if len(field["value"].strip()) > 1024:
+                    raise ValueError(
+                        f"Embed field {field_index} value cannot be longer than 1024 characters"
+                    )
+
+        if len(self) > 6000:
+            raise ValueError("Embed total size cannot be longer than 6000 characters")
