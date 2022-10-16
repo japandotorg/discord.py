@@ -58,7 +58,6 @@ async def json_or_text(response):
 
 class Route:
     BASE: ClassVar[str] = 'https://discord.com/api/v7'
-    path: str
     params: dict[str, Union[str, int]]
     
     webhook_id: Optional[str]
