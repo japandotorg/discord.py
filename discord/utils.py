@@ -65,7 +65,7 @@ from typing_extensions import ParamSpec, Self
 
 from .errors import InvalidArgument
 from .permissions import Permissions
-from .template import Template
+# from .template import Template
 
 DISCORD_EPOCH = 1420070400000
 MAX_ASYNCIO_SECONDS = 3456000
@@ -183,24 +183,25 @@ class SequenceProxy(Sequence[T_co]):
         return self.__proxied.count(value)
 
 
-# @overload
-# def parse_time(timestamp: None) -> None:
-#     ...
-# 
-# 
-# @overload
-# def parse_time(timestamp: str) -> datetime.datetime:
-#     ...
-# 
-# 
-# @overload
-# def parse_time(timestamp: Optional[str]) -> Optional[datetime.datetime]:
-#     ...
+@overload
+def parse_time(timestamp: None) -> None:
+    ...
 
 
-def parse_time(timestamp):
+@overload
+def parse_time(timestamp: str) -> datetime.datetime:
+    ...
+
+
+@overload
+def parse_time(timestamp: Optional[str]) -> Optional[datetime.datetime]:
+    ...
+
+
+def parse_time(timestamp: Optional[str]) -> Optional[datetime.datetime]:
     if timestamp:
-        return datetime.datetime(*map(int, re.split(r'[^\d]', timestamp.replace('+00:00', ''))))
+        return datetime.datetime.fromisoformat(timestamp)
+        # return datetime.datetime(*map(int, re.split(r'[^\d]', timestamp.replace('+00:00', ''))))
     return None
 
 
@@ -813,7 +814,7 @@ def resolve_invite(invite):
     return invite
 
 
-def resolve_template(code: Union[Template, str]) -> str:
+def resolve_template(code):
     """
     Resolves a template code from a :class:`~discord.Template`, URL or code.
 
