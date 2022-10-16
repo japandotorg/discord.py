@@ -32,6 +32,12 @@ from urllib.parse import quote as _uriquote
 import weakref
 
 import aiohttp
+from typing import (
+    ClassVar,
+    Any,
+    Optional,
+    Union,
+)
 
 from .errors import HTTPException, Forbidden, NotFound, LoginFailure, DiscordServerError, GatewayNotFound
 from .gateway import DiscordClientWebSocketResponse
@@ -51,11 +57,18 @@ async def json_or_text(response):
     return text
 
 class Route:
-    BASE = 'https://discord.com/api/v7'
+    BASE: ClassVar[str] = 'https://discord.com/api/v7'
+    path: str
+    params: dict[str, Union[str, int]]
+    
+    webhook_id: Optional[str]
+    webhook_token: Optional[str]
 
-    def __init__(self, method, path, **parameters):
-        self.path = path
-        self.method = method
+    def __init__(self, method: str, path: str, **parameters: Any) -> None:
+        self.path: str = path
+        self.method: str = method
+        self.params = parameters
+        
         url = (self.BASE + self.path)
         if parameters:
             self.url = url.format(**{k: _uriquote(v) if isinstance(v, str) else v for k, v in parameters.items()})
@@ -65,11 +78,39 @@ class Route:
         # major parameters:
         self.channel_id = parameters.get('channel_id')
         self.guild_id = parameters.get('guild_id')
+        self.webhook_id = parameters.get('webhook_id')
+        self.webhook_token = parameters.get('webhook_token')
+        
+        self.known_bucket: Optional[str] = None
+        
+    def __eq__(self, other: "Route") -> bool:
+        if isinstance(other, Route):
+            return self.bucket == other.bucket
+        return NotImplemented
+    
+    def __hash__(self) -> int:
+        return hash(self.bucket)
+    
+    def __repr__(self) -> str:
+        return f"<Route {self.BASE} ({self.endpoint})>"
+    
+    def __str__(self) -> str:
+        return self.endpoint
 
     @property
     def bucket(self):
         # the bucket is just method + path w/ major parameters
+        if self.known_bucket:
+            return self.known_bucket
+        
+        if self.webhook_token:
+            return '{0.webhook_id}:{0.webhook_token}:{0.channel_id}:{0.guild_id}:{0.path}'
+        
         return '{0.channel_id}:{0.guild_id}:{0.path}'.format(self)
+    
+    @property
+    def endpoint(self) -> str:
+        return '{0.method}:{0.path}'.format(self)
 
 class MaybeUnlock:
     def __init__(self, lock):
