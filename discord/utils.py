@@ -64,7 +64,7 @@ from typing import (
 )
 from typing_extensions import ParamSpec, Self
 
-from .errors import InvalidArgument
+from .errors import InvalidArgument, HTTPException
 from .permissions import Permissions
 
 # from .template import Template
@@ -215,6 +215,51 @@ def copy_doc(original: Callable) -> Callable[[T], T]:
         return overriden
 
     return decorator
+
+
+def warn_deprecated(
+    name: str,
+    instead: Union[str, None] = None,
+    since: Union[str, None] = None,
+    removed: Union[str, None] = None,
+    reference: Union[str, None] = None,
+) -> None:
+    """
+    Warn about a deprecated function, with the ability to specify details about the deprecation. Emits a
+    DeprecationWarning.
+    
+    Parameters
+    ----------
+    name: str
+        The name of the deprecated function.
+    instead: Optional[:class:`str`]
+        A recommended alternative to the function.
+    since: Optional[:class:`str`]
+        The version in which the function was deprecated. This should be in the format ``major.minor(.patch)``, where
+        the patch version is optional.
+    removed: Optional[:class:`str`]
+        The version in which the function is planned to be removed. This should be in the format
+        ``major.minor(.patch)``, where the patch version is optional.
+    reference: Optional[:class:`str`]
+        A reference that explains the deprecation, typically a URL to a page such as a changelog entry or a GitHub
+        issue/PR.
+    """
+    warnings.simplefilter("always", DeprecationWarning) # turn off filter
+    
+    message = f"{name} is deprecated"
+    
+    if since:
+        message += f" since version {since}"
+    if removed:
+        message += f" and will be removed in version {removed}"
+    if instead:
+        message += f", consider using {instead} instead"
+    message += "."
+    if reference:
+        message += f" See {reference} for more information."
+        
+    warnings.warn(message, stacklevel=3, category=DeprecationWarning)
+    warnings.simplefilter("default", DeprecationWarning)
 
 
 def deprecated(
@@ -590,6 +635,63 @@ def get(iterable, **attrs):
         if _all(pred(elem) == value for pred, value in converted):
             return elem
     return None
+
+async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> Any:
+    """|coro|
+    
+    Attempts to get an attribute from the object in cache. If it fails, it will attempt to fetch it.
+    If the fetch also fails, an error will be raised.
+    
+    Parameters
+    ----------
+    obj: Any
+        The object to use the get or fetch methods in
+    attr: :class:`str`
+        The attribute to get or fetch. Note the object must have both a ``get_`` and ``fetch_`` method for this attribute.
+    id: :class:`int`
+        The ID of the object
+    default: Any
+        The default value to return if the object is not found, instead of raising an error.
+    
+    Returns
+    -------
+    Any
+        The object found or the default value.
+    
+    Raises
+    ------
+    :exc:`AttributeError`
+        The object is missing a ``get_`` or ``fetch_`` method
+    :exc:`NotFound`
+        Invalid ID for the object
+    :exc:`HTTPException`
+        An error occurred fetching the object
+    :exc:`Forbidden`
+        You do not have permission to fetch the object
+    
+    Examples
+    --------
+    Getting a guild from a guild ID: ::
+        guild = await utils.get_or_fetch(client, 'guild', guild_id)
+    Getting a channel from the guild. If the channel is not found, return None: ::
+        channel = await utils.get_or_fetch(guild, 'channel', channel_id, default=None)
+    """
+    getter = getattr(obj, f"get_{attr}")(id)
+    
+    if getter is None:
+        try:
+            getter = await getattr(obj, f"fetch_{attr}")(id)
+        except AttributeError:
+            getter = await getattr(obj, f"_fetch_{attr}")(id)
+            if getter is None:
+                raise ValueError(f"Could not find {attr} with id {id} on {obj}")
+        except (HTTPException, ValueError):
+            if default is not MISSING:
+                return default
+            else:
+                raise
+    
+    return getter
 
 
 def _unique(iterable: Iterable[T]) -> List[T]:
@@ -1197,3 +1299,22 @@ def format_dt(dt: datetime.datetime, /, style: Optional[TimestampStyle] = None) 
     if style is None:
         return f"<t:{int(dt.timestamp())}>"
     return f"<t:{int(dt.timestamp())}:{style}>"
+
+def generate_snowflake(dt: Union[datetime.datetime, None] = None) -> int:
+    """
+    Returns a numeric snowflake pretending to be created at the given date but more accurate and random
+    than :func:`time_snowflake`. If dt is not passed, it makes one from the current time using utcnow.
+    
+    Parameters
+    ----------
+    dt: :class:`datetime.datetime`
+        A datetime object to convert to a snowflake.
+        If naive, the timezone is assumed to be local time.
+    
+    Returns
+    -------
+    :class:`int`
+        The snowflake representing the time given.
+    """
+    dt = dt or utcnow()
+    return int(dt.timestamp() * 1000 - DISCORD_EPOCH) << 22 | 0x3FFFFF
