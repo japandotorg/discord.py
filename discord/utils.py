@@ -651,7 +651,9 @@ def _parse_ratelimit_header(request: Any, *, use_clock: bool = False) -> float:
 # async def maybe_coroutine(
 #     f: MaybeAwaitableFunc[P, T], *args: P.args, **kwargs: P.kwargs
 # ) -> T:
-async def maybe_coroutine(f, *args, **kwargs):
+async def maybe_coroutine(
+    f: Callable[P, Union[Awaitable[T], T]], /, *args: P.args, **kwargs: P.kwargs
+) -> T:
     value = f(*args, **kwargs)
     if _isawaitable(value):
         return await value
@@ -984,26 +986,26 @@ def escape_mentions(text: str) -> str:
 def parse_token(token: str) -> Tuple[int, datetime.datetime, bytes]:
     """
     Parse a token into its parts
-    
+
     Parameters
     ----------
     token: :class:`str`
         The bot token
-    
+
     Returns
     -------
     Tuple[:class:`int`, :class:`datetime.datetime`, :class:`bytes`]
         The bot's ID, the time when the token was generated and the hmac.
     """
-    parts = token.split('.')
-    
+    parts = token.split(".")
+
     user_id = int(b64decode(parts[0]))
-    
-    timestamp = int.from_bytes(b64decode(parts[1] + '=='), 'big')
+
+    timestamp = int.from_bytes(b64decode(parts[1] + "=="), "big")
     created_at = datetime.datetime.fromtimestamp(timestamp, datetime.timezone.utc)
-    
+
     hmac = b64decode(parts[2] + "==")
-    
+
     return user_id, created_at, hmac
 
 
