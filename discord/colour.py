@@ -26,6 +26,9 @@ DEALINGS IN THE SOFTWARE.
 
 import colorsys
 import random
+import re
+
+RGB_REGEX = re.compile(r'rgb\s*\((?P<r>[0-9.]+%?)\s*,\s*(?P<g>[0-9.]+%?)\s*,\s*(?P<b>[0-9.]+%?)\s*\)')
 
 class Colour:
     """Represents a Discord role colour. This class is similar
