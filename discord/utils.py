@@ -889,6 +889,32 @@ def uuid() -> str:
     return uuid_.uuid1(None, monotonic_ns()).hex
 
 
+def strf_delta(time_delta: datetime.timedelta, show_seconds: bool = True) -> str:
+    """
+    Formats timedelta into a human readable string.
+    """
+
+    years, days = divmod(time_delta.days, 365)
+    hours, rem = divmod(time_delta.seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+
+    years_fmt = f"{years} year{'s' if years > 1 or years == 0 else ''}"
+    days_fmt = f"{days} day{'s' if days > 1 or days == 0 else ''}"
+    hours_fmt = f"{hours} hour{'s' if hours > 1 or hours == 0 else ''}"
+    minutes_fmt = f"{minutes} minute{'s' if minutes > 1 or minutes == 0 else ''}"
+    seconds_fmt = f"{seconds} second{'s' if seconds > 1 or seconds == 0 else ''}"
+
+    if years >= 1:
+        return f"{years_fmt} and {days_fmt}"
+    if days >= 1:
+        return f"{days_fmt} and {hours_fmt}"
+    if hours >= 1:
+        return f"{hours_fmt} and {minutes_fmt}"
+    if show_seconds:
+        return f"{minutes_fmt} and {seconds_fmt}"
+    return f"{minutes_fmt}"
+
+
 def valid_icon_size(size: int) -> bool:
     """Icons must be power of 2 within [16, 4096]."""
     return not size & (size - 1) and 4096 >= size >= 16
