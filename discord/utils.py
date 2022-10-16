@@ -65,6 +65,7 @@ from typing_extensions import ParamSpec, Self
 
 from .errors import InvalidArgument
 from .permissions import Permissions
+
 # from .template import Template
 
 DISCORD_EPOCH = 1420070400000
@@ -111,7 +112,8 @@ Coro = Coroutine[Any, Any, T]
 MaybeAwaitable = Union[T, Awaitable[T]]
 MaybeAwaitableFunc = Callable[P, "MaybeAwaitable[T]"]
 
-_SnowflakeListBase = array.array[int]
+_SnowflakeListBase = array.array
+
 
 class _RequestLike(Protocol):
     headers: Mapping[str, Any]
@@ -628,6 +630,7 @@ def _bytes_to_base64_data(data: bytes):
 def to_json(obj: Any) -> str:
     return json.dumps(obj, separators=(",", ":"), ensure_ascii=True)
 
+
 from_json = json.loads
 
 
@@ -644,24 +647,30 @@ def _parse_ratelimit_header(request: Any, *, use_clock: bool = False) -> float:
         return float(reset_after)
 
 
-async def maybe_coroutine(f: MaybeAwaitableFunc[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+async def maybe_coroutine(
+    f: MaybeAwaitableFunc[P, T], *args: P.args, **kwargs: P.kwargs
+) -> T:
     value = f(*args, **kwargs)
     if _isawaitable(value):
         return await value
     else:
-        return value # type: ignore
+        return value  # type: ignore
 
 
-async def async_all(gen: Iterable[Awaitable[T]], *, check: Callable[[T], bool] = _isawaitable) -> bool:
+async def async_all(
+    gen: Iterable[Awaitable[T]], *, check: Callable[[T], bool] = _isawaitable
+) -> bool:
     for elem in gen:
-        if check(elem): # type: ignore
+        if check(elem):  # type: ignore
             elem = await elem
         if not elem:
             return False
     return True
 
 
-async def sane_wait_for(futures: Iterable[Awaitable[T]], *, timeout: Optional[float]) -> Set[asyncio.Task[T]]:
+async def sane_wait_for(
+    futures: Iterable[Awaitable[T]], *, timeout: Optional[float]
+) -> Set[asyncio.Task[T]]:
     ensured = [asyncio.ensure_future(fut) for fut in futures]
     done, pending = await asyncio.wait(
         ensured, timeout=timeout, return_when=asyncio.ALL_COMPLETED
@@ -672,12 +681,14 @@ async def sane_wait_for(futures: Iterable[Awaitable[T]], *, timeout: Optional[fl
 
     return done
 
+
 def get_slots(cls: Type[Any]) -> Iterator[str]:
     for mro in reversed(cls.__mro__):
         try:
-            yield from mro.__slots__ # type: ignore
+            yield from mro.__slots__  # type: ignore
         except AttributeError:
             continue
+
 
 def compute_timedelta(dt: datetime.datetime) -> float:
     if dt.tzinfo is None:
@@ -685,7 +696,10 @@ def compute_timedelta(dt: datetime.datetime) -> float:
     now = datetime.datetime.now(datetime.timezone.utc)
     return max((dt - now).total_seconds(), 0)
 
-async def sleep_until(when: datetime.datetime, result: Optional[T] = None) -> Optional[T]:
+
+async def sleep_until(
+    when: datetime.datetime, result: Optional[T] = None
+) -> Optional[T]:
     """|coro|
 
     Sleep until a specified time.
@@ -713,15 +727,16 @@ async def sleep_until(when: datetime.datetime, result: Optional[T] = None) -> Op
     delta = compute_timedelta(when)
     return await asyncio.sleep(delta, result)
 
+
 def utcnow() -> datetime.datetime:
     """
     A helper function to return an aware UTC datetime representing the current time.
-    
+
     This should be preferred to :meth:`datetime.datetime.utcnow` since it is an aware
     datetime, compared to the naive datetime in the standard library.
-    
+
     .. versionadded:: 1.7.69
-    
+
     Returns
     --------
     :class:`datetime.datetime`
@@ -748,9 +763,9 @@ class SnowflakeList(array.array):
     """
 
     __slots__ = ()
-    
+
     if TYPE_CHECKING:
-        
+
         def __init__(self, data: Iterable[int], *, is_sorted: bool = False):
             ...
 
@@ -787,6 +802,7 @@ def _string_width(string: str, *, _IS_ASCII=_IS_ASCII) -> int:
 class ResolvedInvite(NamedTuple):
     code: str
     event: Optional[int]
+
 
 def resolve_invite(invite):
     """
@@ -892,7 +908,9 @@ def remove_markdown(text: str, *, ignore_links: bool = True) -> str:
     return re.sub(regex, replacement, text, 0, re.MULTILINE)
 
 
-def escape_markdown(text: str, *, as_needed: bool = False, ignore_links: bool = True) -> str:
+def escape_markdown(
+    text: str, *, as_needed: bool = False, ignore_links: bool = True
+) -> str:
     r"""A helper function that escapes Discord's markdown.
 
     Parameters
@@ -960,6 +978,7 @@ def escape_mentions(text: str) -> str:
     """
     return re.sub(r"@(everyone|here|[!&]?[0-9]{17,20})", "@\u200b\\1", text)
 
+
 def _chunk(iterator: Iterable[T], max_size: int) -> Iterator[List[T]]:
     ret = []
     n = 0
@@ -970,10 +989,11 @@ def _chunk(iterator: Iterable[T], max_size: int) -> Iterator[List[T]]:
             yield ret
             ret = []
             n = 0
-            
+
     if ret:
         yield ret
-        
+
+
 async def _achunk(iterator: AsyncIterable[T], max_size: int) -> AsyncIterator[List[T]]:
     ret = []
     n = 0
@@ -986,11 +1006,13 @@ async def _achunk(iterator: AsyncIterable[T], max_size: int) -> AsyncIterator[Li
             n = 0
     if ret:
         yield ret
-        
+
+
 @overload
 def as_chunks(iterator: Iterable[T], max_size: int) -> Iterator[List[T]]:
     ...
-    
+
+
 @overload
 def as_chunks(iterator: AsyncIterable[T], max_size: int) -> AsyncIterator[List[T]]:
     ...
@@ -999,46 +1021,49 @@ def as_chunks(iterator: AsyncIterable[T], max_size: int) -> AsyncIterator[List[T
 def as_chunks(iterator: _Iter[T], max_size: int) -> _Iter[List[T]]:
     """
     A helper function that collects an iterator into chunks of a given size.
-    
+
     .. versionadded:: 1.7.69
-    
+
     Parameters
     ----------
     iterator: Union[:class:`collections.abc.Iterable`, :class:`collections.abc.AsyncIterable`]
         The iterator to chunk, can be sync or async.
     max_size: :class:`int`
         The maximum chunk size.
-        
+
     .. warning::
-    
+
         The last chunk collected may not be as large as ``max_size``.
-        
+
     Returns
     --------
     Union[:class:`Iterator`, :class:`AsyncIterator`]
         A new iterator which yields chunks of a given size.
     """
     if max_size <= 0:
-        raise ValueError('Chunk sizes must be greater than 0.')
+        raise ValueError("Chunk sizes must be greater than 0.")
 
     if isinstance(iterator, AsyncIterable):
         return _achunk(iterator, max_size)
     return _chunk(iterator, max_size)
 
+
 def is_inside_class(func: Callable[..., Any]) -> bool:
     if func.__qualname__ == func.__name__:
         return False
-    (remaining, _, _) = func.__qualname__.rpartition('.')
-    return not remaining.endswith('<locals>')
+    (remaining, _, _) = func.__qualname__.rpartition(".")
+    return not remaining.endswith("<locals>")
 
-TimestampStyle = Literal['f', 'F', 'd', 'D', 't', 'T', 'R']
+
+TimestampStyle = Literal["f", "F", "d", "D", "t", "T", "R"]
+
 
 def format_dt(dt: datetime.datetime, /, style: Optional[TimestampStyle] = None) -> str:
     """
     A helper function to format a :class:`datetime.datetime` for presentation within Discord.
-    
+
     This allows for a locale-independent way of presenting data using Discord specific Markdown.
-    
+
     +-------------+----------------------------+-----------------+
     |    Style    |       Example Output       |   Description   |
     +=============+============================+=================+
@@ -1056,24 +1081,24 @@ def format_dt(dt: datetime.datetime, /, style: Optional[TimestampStyle] = None) 
     +-------------+----------------------------+-----------------+
     | R           | 5 years ago                | Relative Time   |
     +-------------+----------------------------+-----------------+
-    
+
     Note that the exact output depends on the user's locale setting in the client. The example output
     presented is using the ``en-GB`` locale.
-    
+
     .. versionadded:: 1.7.69
-    
+
     Parameters
     -----------
     dt: :class:`datetime.datetime`
         The datetime to format.
     style: :class:`str`
         The style to format the datetime with.
-    
+
     Returns
     --------
     :class:`str`
         The formatted string.
     """
     if style is None:
-        return f'<t:{int(dt.timestamp())}>'
-    return f'<t:{int(dt.timestamp())}:{style}>'
+        return f"<t:{int(dt.timestamp())}>"
+    return f"<t:{int(dt.timestamp())}:{style}>"
