@@ -98,6 +98,13 @@ t.ActivityFlags = {
 """
 
 if TYPE_CHECKING:
+    from .types.activity import (
+        Activity as ActivityPayload,
+        ActivityTimestamps,
+        ActivityParty,
+        ActivityAssets,
+    )
+    
     from .state import ConnectionState
 
 
@@ -136,7 +143,7 @@ class BaseActivity:
                 self._created_at / 1000, tz=datetime.timezone.utc
             )
 
-    def to_dict(self):
+    def to_dict(self) -> ActivityPayload:
         raise NotImplementedError
 
 
@@ -214,9 +221,9 @@ class Activity(BaseActivity):
         super().__init__(**kwargs)
         self.state: Optional[str] = kwargs.pop("state", None)
         self.details: Optional[str] = kwargs.pop("details", None)
-        self.timestamps = kwargs.pop("timestamps", {})
-        self.assets = kwargs.pop("assets", {})
-        self.party = kwargs.pop("party", {})
+        self.timestamps: ActivityTimestamps = kwargs.pop("timestamps", {})
+        self.assets: ActivityAssets = kwargs.pop("assets", {})
+        self.party: ActivityParty = kwargs.pop("party", {})
         self.application_id: Optional[int] = _get_as_snowflake(kwargs, "application_id")
         self.name: Optional[str] = kwargs.pop("name", None)
         self.url: Optional[str] = kwargs.pop("url", None)
@@ -366,7 +373,7 @@ class Game(BaseActivity):
         self.name: str = name
 
         try:
-            timestamps = extra["timestamps"]
+            timestamps: ActivityTimestamps = extra["timestamps"]
         except KeyError:
             self._extract_timestamp(extra, "start")
             self._extract_timestamp(extra, "end")
@@ -488,7 +495,7 @@ class Streaming(BaseActivity):
         self.game: Optional[str] = extra.pop("state", None)
         self.url: str = url
         self.details: Optional[str] = extra.pop("details", self.name)  # compatibility
-        self.assets = extra.pop("assets", {})
+        self.assets: ActivityAssets = extra.pop("assets", {})
 
     @property
     def type(self) -> ActivityType:
@@ -581,9 +588,9 @@ class Spotify:
     def __init__(self, **data: Any) -> None:
         self._state: str = data.pop("state", "")
         self._details: str = data.pop("details", "")
-        self._timestamps = data.pop("timestamps", {})
-        self._assets = data.pop("assets", {})
-        self._party = data.pop("party", {})
+        self._timestamps: ActivityTimestamps = data.pop("timestamps", {})
+        self._assets: ActivityAssets = data.pop("assets", {})
+        self._party: ActivityParty = data.pop("party", {})
         self._sync_id: str = data.pop("sync_id", "")
         self._session_id: Optional[str] = data.pop("session_id")
         self._created_at: Optional[float] = data.pop("created_at", None)
@@ -709,12 +716,12 @@ class Spotify:
     @property
     def start(self) -> datetime.datetime:
         """:class:`datetime.datetime`: When the user started playing this song in UTC."""
-        return datetime.datetime.fromtimestamp(self._timestamps["start"] / 1000, tz=datetime.timezone.utc)
+        return datetime.datetime.fromtimestamp(self._timestamps["start"] / 1000, tz=datetime.timezone.utc)  # type: ignore
 
     @property
     def end(self) -> datetime.datetime:
         """:class:`datetime.datetime`: When the user will stop playing this song in UTC."""
-        return datetime.datetime.fromtimestamp(self._timestamps["end"] / 1000, datetime.timezone.utc)
+        return datetime.datetime.fromtimestamp(self._timestamps["end"] / 1000, datetime.timezone.utc)  # type: ignore
 
     @property
     def duration(self) -> datetime.timedelta:
@@ -837,14 +844,14 @@ class CustomActivity(BaseActivity):
 ActivityTypes = Union[Activity, Game, CustomActivity, Streaming, Spotify]
 
 @overload
-def create_activity(data, state: ConnectionState) -> ActivityTypes:
+def create_activity(data: ActivityPayload, state: ConnectionState) -> ActivityTypes:
     ...
     
 @overload
 def create_activity(data: None, state: ConnectionState) -> None:
     ...
 
-def create_activity(data, state: ConnectionState) -> Optional[ActivityTypes]:
+def create_activity(data: Optional[ActivityPayload], state: ConnectionState) -> Optional[ActivityTypes]:
     if not data:
         return None
 
