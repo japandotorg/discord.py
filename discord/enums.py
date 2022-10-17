@@ -24,8 +24,23 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
+from __future__ import annotations
+
 import types
 from collections import namedtuple
+from typing import (
+    Any,
+    Type,
+    TypeVar,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    TYPE_CHECKING,
+    Tuple,
+    Iterator,
+    Mapping,
+)
 
 __all__ = (
     'Enum',
@@ -55,22 +70,38 @@ __all__ = (
     'StickerType',
 )
 
-def _create_value_cls(name):
+if TYPE_CHECKING:
+    from typing_extensions import Self
+
+def _create_value_cls(name: str, comparable: bool):
     cls = namedtuple('_EnumValue_' + name, 'name value')
-    cls.__repr__ = lambda self: '<%s.%s: %r>' % (name, self.name, self.value)
-    cls.__str__ = lambda self: '%s.%s' % (name, self.name)
+    cls.__repr__ = lambda self: f'<{name}.{self.name}: {self.value!r}>'  # type: ignore
+    cls.__str__ = lambda self: f'{name}.{self.name}'  # type: ignore
+    if comparable:
+        cls.__le__ = lambda self, other: isinstance(other, self.__class__) and self.value <= other.value  # type: ignore
+        cls.__ge__ = lambda self, other: isinstance(other, self.__class__) and self.value >= other.value  # type: ignore
+        cls.__lt__ = lambda self, other: isinstance(other, self.__class__) and self.value < other.value  # type: ignore
+        cls.__gt__ = lambda self, other: isinstance(other, self.__class__) and self.value > other.value  # type: ignore
     return cls
 
 def _is_descriptor(obj):
     return hasattr(obj, '__get__') or hasattr(obj, '__set__') or hasattr(obj, '__delete__')
 
 class EnumMeta(type):
-    def __new__(cls, name, bases, attrs):
+    if TYPE_CHECKING:
+        __name__: ClassVar[str]
+        _enum_member_names_: ClassVar[List[str]]
+        _enum_member_map_: ClassVar[Dict[str, Any]]
+        _enum_value_map_: ClassVar[Dict[Any, Any]]
+        
+    def __new__(
+        cls, name: str, bases: Tuple[type, ...], attrs: Dict[str, Any], *, comparable: bool = False
+    ) -> Self:
         value_mapping = {}
         member_mapping = {}
         member_names = []
 
-        value_cls = _create_value_cls(name)
+        value_cls = _create_value_cls(name, comparable)
         for key, value in list(attrs.items()):
             is_descriptor = _is_descriptor(value)
             if key[0] == '_' and not is_descriptor:
@@ -99,55 +130,58 @@ class EnumMeta(type):
         attrs['_enum_member_map_'] = member_mapping
         attrs['_enum_member_names_'] = member_names
         actual_cls = super().__new__(cls, name, bases, attrs)
-        value_cls._actual_enum_cls_ = actual_cls
+        value_cls._actual_enum_cls_ = actual_cls # type: ignore
         return actual_cls
 
-    def __iter__(cls):
+    def __iter__(cls) -> Iterator[Any]:
         return (cls._enum_member_map_[name] for name in cls._enum_member_names_)
 
-    def __reversed__(cls):
+    def __reversed__(cls) -> Iterator[Any]:
         return (cls._enum_member_map_[name] for name in reversed(cls._enum_member_names_))
 
-    def __len__(cls):
+    def __len__(cls) -> int:
         return len(cls._enum_member_names_)
 
-    def __repr__(cls):
+    def __repr__(cls) -> str:
         return '<enum %r>' % cls.__name__
 
     @property
-    def __members__(cls):
+    def __members__(cls) -> Mapping[str, Any]:
         return types.MappingProxyType(cls._enum_member_map_)
 
-    def __call__(cls, value):
+    def __call__(cls, value: str) -> Any:
         try:
             return cls._enum_value_map_[value]
         except (KeyError, TypeError):
-            raise ValueError("%r is not a valid %s" % (value, cls.__name__))
+            raise ValueError(f"{value!r} is not a valid {cls.__name__}")
 
-    def __getitem__(cls, key):
+    def __getitem__(cls, key: str) -> Any:
         return cls._enum_member_map_[key]
 
-    def __setattr__(cls, name, value):
+    def __setattr__(cls, name: str, value: Any) -> None:
         raise TypeError('Enums are immutable.')
 
-    def __delattr__(cls, attr):
+    def __delattr__(cls, attr: str) -> None:
         raise TypeError('Enums are immutable')
 
-    def __instancecheck__(self, instance):
+    def __instancecheck__(self, instance: Any) -> bool:
         # isinstance(x, Y)
         # -> __instancecheck__(Y, x)
         try:
             return instance._actual_enum_cls_ is self
         except AttributeError:
             return False
-
-class Enum(metaclass=EnumMeta):
-    @classmethod
-    def try_value(cls, value):
-        try:
-            return cls._enum_value_map_[value]
-        except (KeyError, TypeError):
-            return value
+        
+if TYPE_CHECKING:
+    from enum import Enum
+else:
+    class Enum(metaclass=EnumMeta):
+        @classmethod
+        def try_value(cls, value):
+            try:
+                return cls._enum_value_map_[value]
+            except (KeyError, TypeError):
+                return value
 
 
 class ChannelType(Enum):
@@ -217,10 +251,10 @@ class SpeakingState(Enum):
     soundshare = 2
     priority   = 4
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
-    def __int__(self):
+    def __int__(self) -> int:
         return self.value
 
 class VerificationLevel(Enum):
@@ -261,14 +295,14 @@ class Theme(Enum):
     dark = 'dark'
 
 class Status(Enum):
-    online = 'online'
-    offline = 'offline'
-    idle = 'idle'
-    dnd = 'dnd'
+    online         = 'online'
+    offline        = 'offline'
+    idle           = 'idle'
+    dnd            = 'dnd'
     do_not_disturb = 'dnd'
-    invisible = 'invisible'
+    invisible      = 'invisible'
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.value
 
 class DefaultAvatar(Enum):
@@ -420,15 +454,15 @@ class UserFlags(Enum):
     verified_bot_developer = 131072
 
 class ActivityType(Enum):
-    unknown = -1
-    playing = 0
+    unknown   = -1
+    playing   = 0
     streaming = 1
     listening = 2
-    watching = 3
-    custom = 4
+    watching  = 3
+    custom    = 4
     competing = 5
 
-    def __int__(self):
+    def __int__(self) -> int:
         return self.value
 
 class HypeSquadHouse(Enum):
@@ -458,14 +492,21 @@ class StickerType(Enum):
     png = 1
     apng = 2
     lottie = 3
+    
+E = TypeVar('E', bound='Enum')
+    
+def create_unknown_value(cls: Type[E], val: Any) -> E:
+    value_cls = cls._enum_value_cls_ # type: ignore
+    name = f"unknwon_{val}"
+    return value_cls(name=name, value=val)
 
-def try_enum(cls, val):
+def try_enum(cls: Type[E], val: Any) -> E:
     """A function that tries to turn the value into enum ``cls``.
 
     If it fails it returns the value instead.
     """
 
     try:
-        return cls._enum_value_map_[val]
+        return cls._enum_value_map_[val] # type: ignore
     except (KeyError, TypeError, AttributeError):
-        return val
+        return create_unknown_value(cls, val)
