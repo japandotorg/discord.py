@@ -28,6 +28,9 @@ import abc
 import sys
 import copy
 import asyncio
+from typing import (
+    Union
+)
 
 from .iterators import HistoryIterator
 from .context_managers import Typing
@@ -40,6 +43,10 @@ from .invite import Invite
 from .file import File
 from .voice_client import VoiceClient, VoiceProtocol
 from . import utils
+from .channel import TextChannel, DMChannel, GroupChannel, PartialMessageable, VoiceChannel
+
+PartialMessageableChannel = Union[TextChannel, VoiceChannel, DMChannel, PartialMessageable]
+MessageableChannel = Union[PartialMessageableChannel, GroupChannel]
 
 class _Undefined:
     def __repr__(self):
