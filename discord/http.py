@@ -1340,6 +1340,14 @@ class HTTPClient:
 
     def application_info(self):
         return self.request(Route("GET", "/oauth2/applications/@me"))
+    
+    @staticmethod
+    def format_websocket_url(url: str, encoding: str = 'json', zlib: bool = True) -> str:
+        if zlib:
+            value = "{url}?encoding={encoding}&v={version}&compress=zlib-stream"
+        else:
+            value = "{url}?encoding={encoding}&v={version}"
+        return value.format(url=url, encoding=encoding, version=6)
 
     async def get_gateway(self, *, encoding="json", v=6, zlib=True):
         try:
