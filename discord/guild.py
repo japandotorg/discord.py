@@ -264,6 +264,10 @@ class Guild(Hashable):
             r.position -= r.position > role.position
 
         return role
+    
+    @classmethod
+    def _create_unavailable(cls, *, state, guild_id):
+        return cls(state=state, data={'id': guild_id, 'unavailable': True}) # type: ignore
 
     def _from_data(self, guild):
         # according to Stan, this is always available even if the guild is unavailable
