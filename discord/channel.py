@@ -26,6 +26,8 @@ DEALINGS IN THE SOFTWARE.
 
 import time
 import asyncio
+import datetime
+from typing import Optional, Any
 
 import discord.abc
 from .permissions import Permissions
@@ -34,6 +36,9 @@ from .mixins import Hashable
 from . import utils
 from .asset import Asset
 from .errors import ClientException, NoMoreItems, InvalidArgument
+from .message import PartialMessage
+from .state import ConnectionState
+from .guild import Guild
 
 __all__ = (
     'TextChannel',
@@ -1438,7 +1443,7 @@ class GroupChannel(discord.abc.Messageable, Hashable):
         base.manage_messages = False
         base.mention_everyone = True
 
-        if user.id == self.owner.id:
+        if user.id == self.owner.id: # type: ignore
             base.kick_members = True
 
         return base
@@ -1567,3 +1572,103 @@ def _channel_factory(channel_type):
         return StageChannel, value
     else:
         return None, value
+    
+class PartialMessageable(discord.abc.Messageable, Hashable):
+    """
+    Represents a partial messageable to aid with working messageable channels when
+    only a channel ID is present.
+    
+    The only way to construct this class is through :meth:`Client.get_partial_messageable`.
+    
+    Note that this class is trimmed down and has no rich attributes.
+    
+    .. versionadded:: 1.7.69
+    
+    .. container:: operations
+    
+        .. describe:: x == y
+    
+            Checks if two partial messageables are equal.
+    
+        .. describe:: x != y
+    
+            Checks if two partial messageables are not equal.
+    
+        .. describe:: hash(x)
+    
+            Returns the partial messageable's hash.
+    
+    Attributes
+    -----------
+    id: :class:`int`
+        The channel ID associated with this partial messageable.
+    guild_id: Optional[:class:`int`]
+        The guild ID associated with this partial messageable.
+    type: Optional[:class:`ChannelType`]
+        The channel type associated with this partial messageable, if given.
+    """
+    
+    def __init__(self, state: ConnectionState, id: int, guild_id: Optional[int] = None, type: Optional[ChannelType] = None):
+        self._state: ConnectionState = state
+        self.id: int = id
+        self.guild_id: Optional[int] = guild_id
+        self.type: Optional[ChannelType] = type
+
+    def __repr__(self) -> str:
+        return f'<{self.__class__.__name__} id={self.id} type={self.type!r}>'
+
+    async def _get_channel(self) -> PartialMessageable: # type: ignore
+        return self
+
+    @property
+    def guild(self) -> Optional[Guild]:
+        """Optional[:class:`Guild`]: The guild this partial messageable is in."""
+        return self._state._get_guild(self.guild_id)
+
+    @property
+    def jump_url(self) -> str:
+        """:class:`str`: Returns a URL that allows the client to jump to the channel."""
+        if self.guild_id is None:
+            return f'https://discord.com/channels/@me/{self.id}'
+        return f'https://discord.com/channels/{self.guild_id}/{self.id}'
+
+    @property
+    def created_at(self) -> datetime.datetime:
+        """:class:`datetime.datetime`: Returns the channel's creation time in UTC."""
+        return utils.snowflake_time(self.id)
+
+    def permissions_for(self, obj: Any = None, /) -> Permissions:
+        """Handles permission resolution for a :class:`User`.
+        This function is there for compatibility with other channel types.
+        Since partial messageables cannot reasonably have the concept of
+        permissions, this will always return :meth:`Permissions.none`.
+        Parameters
+        -----------
+        obj: :class:`User`
+            The user to check permissions for. This parameter is ignored
+            but kept for compatibility with other ``permissions_for`` methods.
+        Returns
+        --------
+        :class:`Permissions`
+            The resolved permissions.
+        """
+
+        return Permissions.none()
+
+    def get_partial_message(self, message_id: int, /) -> PartialMessage:
+        """Creates a :class:`PartialMessage` from the message ID.
+        This is useful if you want to work with a message and only have its ID without
+        doing an unnecessary API call.
+        Parameters
+        ------------
+        message_id: :class:`int`
+            The message ID to create a partial message for.
+        Returns
+        ---------
+        :class:`PartialMessage`
+            The partial message.
+        """
+
+        from .message import PartialMessage
+
+        return PartialMessage(channel=self, id=message_id)
