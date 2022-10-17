@@ -34,6 +34,22 @@ import weakref
 import warnings
 import inspect
 import gc
+from typing import (
+    Dict,
+    Optional,
+    TYPE_CHECKING,
+    Union,
+    Callable,
+    Any,
+    List,
+    TypeVar,
+    Coroutine,
+    Sequence,
+    Tuple,
+    Deque,
+    Literal,
+    overload,
+)
 
 import os
 
@@ -55,17 +71,39 @@ from .flags import Intents, MemberCacheFlags
 from .object import Object
 from .invite import Invite
 
-class ChunkRequest:
-    def __init__(self, guild_id, loop, resolver, *, cache=True):
-        self.guild_id = guild_id
-        self.resolver = resolver
-        self.loop = loop
-        self.cache = cache
-        self.nonce = os.urandom(16).hex()
-        self.buffer = [] # List[Member]
-        self.waiters = []
+if TYPE_CHECKING:
+    from .abc import PrivateChannel, MessageableChannel, GuildChannel
+    from .channel import PartialMessageable
+    from .http import HTTPClient
+    from .voice_client import VoiceProtocol
+    from .client import Client
+    from .gateway import DiscordWebSocket
+    
+    from .types.snowflake import Snowflake
+    from .types.activity import Activity as ActivityPayload
+    from .types.user import User as UserPayload, PartialUser as PartialUserPayload
+    
+    T = TypeVar('T')
+    Channel = Union[GuildChannel, PrivateChannel, PartialMessageable]
 
-    def add_members(self, members):
+class ChunkRequest:
+    def __init__(
+        self, 
+        guild_id: int, 
+        loop: asyncio.AbstractEventLoop, 
+        resolver: Callable[[int], Any], 
+        *, 
+        cache: bool = True
+    ):
+        self.guild_id: int = guild_id
+        self.resolver: Callable[[int], Any] = resolver
+        self.loop: asyncio.AbstractEventLoop = loop
+        self.cache: bool = cache
+        self.nonce: str = os.urandom(16).hex()
+        self.buffer: List[Member] = [] # List[Member]
+        self.waiters: List[asyncio.Future[List[Member]]] = []
+
+    def add_members(self, members: List[Member]) -> None:
         self.buffer.extend(members)
         if self.cache:
             guild = self.resolver(self.guild_id)
@@ -73,11 +111,11 @@ class ChunkRequest:
                 return
 
             for member in members:
-                existing = guild.get_member(member.id)
+                existing = guild.get_member(member.id) # type: ignore
                 if existing is None or existing.joined_at is None:
                     guild._add_member(member)
 
-    async def wait(self):
+    async def wait(self) -> List[Member]:
         future = self.loop.create_future()
         self.waiters.append(future)
         try:
@@ -85,41 +123,56 @@ class ChunkRequest:
         finally:
             self.waiters.remove(future)
 
-    def get_future(self):
+    def get_future(self) -> asyncio.Future[List[Member]]:
         future = self.loop.create_future()
         self.waiters.append(future)
         return future
 
-    def done(self):
+    def done(self) -> None:
         for future in self.waiters:
             if not future.done():
                 future.set_result(self.buffer)
 
 log = logging.getLogger(__name__)
 
-async def logging_coroutine(coroutine, *, info):
+async def logging_coroutine(coroutine: Coroutine[Any, Any, T], *, info: str) -> Optional[T]:
     try:
         await coroutine
     except Exception:
         log.exception('Exception occurred during %s', info)
 
 class ConnectionState:
-    def __init__(self, *, dispatch, handlers, hooks, syncer, http, loop, **options):
-        self.loop = loop
-        self.http = http
-        self.max_messages = options.get('max_messages', 1000)
+    if TYPE_CHECKING:
+        _get_Websocket: Callable[..., DiscordWebSocket]
+        _get_client: Callable[..., Client]
+        _parsers: Dict[str, Callable[[Dict[str, Any]], None]]
+        
+    def __init__(
+        self, 
+        *, 
+        dispatch: Callable[..., Any], 
+        handlers: Dict[str, Callable[..., Any]], 
+        hooks: Dict[str, Callable[..., Coroutine[Any, Any, Any]]], 
+        syncer, 
+        http: HTTPClient, 
+        # loop, 
+        **options: Any,
+    ) -> None:
+        self.loop: asyncio.AbstractEventLoop = utils.MISSING
+        self.http: HTTPClient = http
+        self.max_messages: Optional[int] = options.get('max_messages', 1000)
         if self.max_messages is not None and self.max_messages <= 0:
             self.max_messages = 1000
 
-        self.dispatch = dispatch
+        self.dispatch: Callable[..., Any] = dispatch
         self.syncer = syncer
         self.is_bot = None
-        self.handlers = handlers
-        self.hooks = hooks
-        self.shard_count = None
-        self._ready_task = None
-        self.heartbeat_timeout = options.get('heartbeat_timeout', 60.0)
-        self.guild_ready_timeout = options.get('guild_ready_timeout', 2.0)
+        self.handlers: Dict[str, Callable[..., Any]] = handlers
+        self.hooks: Dict[str, Callable[..., Coroutine[Any, Any, Any]]] = hooks
+        self.shard_count: Optional[int] = None
+        self._ready_task: Optional[asyncio.Task] = None
+        self.heartbeat_timeout: float = options.get('heartbeat_timeout', 60.0)
+        self.guild_ready_timeout: float = options.get('guild_ready_timeout', 2.0)
         if self.guild_ready_timeout < 0:
             raise ValueError('guild_ready_timeout cannot be negative')
 
@@ -129,8 +182,8 @@ class ConnectionState:
         if allowed_mentions is not None and not isinstance(allowed_mentions, AllowedMentions):
             raise TypeError('allowed_mentions parameter must be AllowedMentions')
 
-        self.allowed_mentions = allowed_mentions
-        self._chunk_requests = {} # Dict[Union[int, str], ChunkRequest]
+        self.allowed_mentions: Optional[AllowedMentions] = allowed_mentions
+        self._chunk_requests: Dict[Union[int, str], ChunkRequest] = {} # Dict[Union[int, str], ChunkRequest]
 
         activity = options.get('activity', None)
         if activity:
@@ -179,41 +232,55 @@ class ConnectionState:
 
             cache_flags._verify_intents(intents)
 
-        self.member_cache_flags = cache_flags
-        self._activity = activity
-        self._status = status
-        self._intents = intents
+        self.member_cache_flags: MemberCacheFlags = cache_flags
+        self._activity: Optional[ActivityPayload] = activity
+        self._status: Optional[str] = status
+        self._intents: Intents = intents
 
         if not intents.members or cache_flags._empty:
             self.store_user = self.store_user_no_intents
 
+        self.parsers: Dict[str, Callable[[Any], None]]
         self.parsers = parsers = {}
         for attr, func in inspect.getmembers(self):
             if attr.startswith('parse_'):
                 parsers[attr[6:].upper()] = func
 
         self.clear()
+        
+    async def close(self) -> None:
+        for voice in self.voice_clients:
+            try:
+                await voice.disconnect(force=True)
+            except Exception:
+                pass
 
-    def clear(self):
-        self.user = None
-        self._users = weakref.WeakValueDictionary()
-        self._emojis = {}
+    def clear(self) -> None:
+        self.user: Optional[ClientUser] = None
+        self._users: weakref.WeakValueDictionary[int, User] = weakref.WeakValueDictionary()
+        self._emojis: Dict[int, Emoji] = {}
         self._calls = {}
-        self._guilds = {}
-        self._voice_clients = {}
+        self._guilds: Dict[int, Guild] = {}
+        self._voice_clients: Dict[int, VoiceProtocol] = {}
 
         # LRU of max size 128
-        self._private_channels = OrderedDict()
+        self._private_channels: OrderedDict[int, PrivateChannel] = OrderedDict()
         # extra dict to look up private channels by user id
-        self._private_channels_by_user = {}
-        self._messages = self.max_messages and deque(maxlen=self.max_messages)
+        self._private_channels_by_user: Dict[int, DMChannel] = {}
+        
+        if self.max_messages is not None:
+            self._messages: Optional[Deque[Message]] = deque(maxlen=self.max_messages)
+        else:
+            self._messages: Optional[Deque[Message]] = None
 
         # In cases of large deallocations the GC should be called explicitly
         # To free the memory more immediately, especially true when it comes
         # to reconnect loops which cause mass allocations and deallocations.
         gc.collect()
 
-    def process_chunk_requests(self, guild_id, nonce, members, complete):
+    def process_chunk_requests(
+        self, guild_id: int, nonce: Optional[str], members: List[Member], complete: bool
+    ) -> None:
         removed = []
         for key, request in self._chunk_requests.items():
             if request.guild_id == guild_id and request.nonce == nonce:
@@ -225,7 +292,7 @@ class ConnectionState:
         for key in removed:
             del self._chunk_requests[key]
 
-    def call_handlers(self, key, *args, **kwargs):
+    def call_handlers(self, key: str, *args: Any, **kwargs: Any) -> None:
         try:
             func = self.handlers[key]
         except KeyError:
@@ -233,7 +300,7 @@ class ConnectionState:
         else:
             func(*args, **kwargs)
 
-    async def call_hooks(self, key, *args, **kwargs):
+    async def call_hooks(self, key: str, *args: Any, **kwargs: Any) -> None:
         try:
             coro = self.hooks[key]
         except KeyError:
@@ -242,34 +309,34 @@ class ConnectionState:
             await coro(*args, **kwargs)
 
     @property
-    def self_id(self):
+    def self_id(self) -> Optional[int]:
         u = self.user
         return u.id if u else None
 
     @property
-    def intents(self):
+    def intents(self) -> Intents:
         ret = Intents.none()
         ret.value = self._intents.value
         return ret
 
     @property
-    def voice_clients(self):
+    def voice_clients(self) -> List[VoiceProtocol]:
         return list(self._voice_clients.values())
 
-    def _get_voice_client(self, guild_id):
-        return self._voice_clients.get(guild_id)
+    def _get_voice_client(self, guild_id: Optional[int]) -> Optional[VoiceProtocol]:
+        return self._voice_clients.get(guild_id) # type: ignore
 
-    def _add_voice_client(self, guild_id, voice):
+    def _add_voice_client(self, guild_id: int, voice: VoiceProtocol) -> None:
         self._voice_clients[guild_id] = voice
 
-    def _remove_voice_client(self, guild_id):
+    def _remove_voice_client(self, guild_id: int) -> None:
         self._voice_clients.pop(guild_id, None)
 
-    def _update_references(self, ws):
+    def _update_references(self, ws: DiscordWebSocket) -> None:
         for vc in self.voice_clients:
-            vc.main_ws = ws
+            vc.main_ws = ws # type: ignore
 
-    def store_user(self, data):
+    def store_user(self, data: Union[UserPayload, PartialUserPayload]) -> User:
         # this way is 300% faster than `dict.setdefault`.
         user_id = int(data['id'])
         try:
@@ -280,28 +347,34 @@ class ConnectionState:
                 self._users[user_id] = user
             return user
 
-    def store_user_no_intents(self, data):
+    def store_user_no_intents(self, data: Union[UserPayload, PartialUserPayload]) -> User:
+        return User(state=self, data=data)
+    
+    def create_user(self, data: Union[UserPayload, PartialUserPayload]) -> User:
         return User(state=self, data=data)
 
-    def get_user(self, id):
+    def get_user(self, id: int) -> Optional[User]:
         return self._users.get(id)
 
-    def store_emoji(self, guild, data):
+    def store_emoji(self, guild: Guild, data) -> Emoji:
         emoji_id = int(data['id'])
         self._emojis[emoji_id] = emoji = Emoji(guild=guild, state=self, data=data)
         return emoji
 
     @property
-    def guilds(self):
+    def guilds(self) -> List[Guild]:
         return list(self._guilds.values())
 
-    def _get_guild(self, guild_id):
-        return self._guilds.get(guild_id)
+    def _get_guild(self, guild_id: Optional[int]) -> Optional[Guild]:
+        return self._guilds.get(guild_id) # type: ignore
+    
+    def _get_or_create_unavailable_guild(self, guild_id: int) -> Guild:
+        return self._guilds.get(guild_id) or Guild._create_unavailable(state=self, guild_id=guild_id)
 
-    def _add_guild(self, guild):
+    def _add_guild(self, guild: Guild) -> None:
         self._guilds[guild.id] = guild
 
-    def _remove_guild(self, guild):
+    def _remove_guild(self, guild: Guild) -> None:
         self._guilds.pop(guild.id, None)
 
         for emoji in guild.emojis:
@@ -314,23 +387,23 @@ class ConnectionState:
         gc.collect()
 
     @property
-    def emojis(self):
+    def emojis(self) -> List[Emoji]:
         return list(self._emojis.values())
 
-    def get_emoji(self, emoji_id):
-        return self._emojis.get(emoji_id)
+    def get_emoji(self, emoji_id: Optional[int]) -> Optional[Emoji]:
+        return self._emojis.get(emoji_id) # type: ignore
 
     @property
-    def private_channels(self):
+    def private_channels(self) -> List[PrivateChannel]:
         return list(self._private_channels.values())
 
-    def _get_private_channel(self, channel_id):
+    def _get_private_channel(self, channel_id: Optional[int]) -> Optional[PrivateChannel]:
         try:
-            value = self._private_channels[channel_id]
+            value = self._private_channels[channel_id] # type: ignore
         except KeyError:
             return None
         else:
-            self._private_channels.move_to_end(channel_id)
+            self._private_channels.move_to_end(channel_id) # type: ignore
             return value
 
     def _get_private_channel_by_user(self, user_id):
