@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from typing import List, Literal, Optional, TypedDict
-from typing_extensions import NotRequired
-from .user import User
-from .snowflake import Snowflake
 
+from typing_extensions import NotRequired
+
+from .snowflake import Snowflake
+from .user import User
 
 StatusType = Literal["idle", "dnd", "online", "offline"]
 
