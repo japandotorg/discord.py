@@ -24,6 +24,8 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 """
 
+import re
+
 from .asset import Asset
 from . import utils
 
@@ -75,6 +77,8 @@ class PartialEmoji(_EmojiTag):
     """
 
     __slots__ = ('animated', 'name', 'id', '_state')
+    
+    _CUSTOM_EMOJI_RE = re.compile(r'<?(?P<animated>a)?:?(?P<name>[A-Za-z0-9\_]+):(?P<id>[0-9]{13,20})>?')
 
     def __init__(self, *, name, animated=False, id=None):
         self.animated = animated
@@ -89,6 +93,42 @@ class PartialEmoji(_EmojiTag):
             id=utils._get_as_snowflake(data, 'id'),
             name=data.get('name'),
         )
+        
+    @classmethod
+    def from_str(cls, value: str):
+        """
+        Converts a Discord string representation of an emoji to a :class:`PartialEmoji`.
+        
+        The formats accepted are:
+        
+        - ``a:name:id``
+        - ``<a:name:id>``
+        - ``name:id``
+        - ``<:name:id>``
+        
+        If the format does not match then it is assumed to be a unicode emoji.
+        
+        .. versionadded:: 1.7.420
+        
+        Parameters
+        ------------
+        value: :class:`str`
+            The string representation of an emoji.
+        Returns
+        --------
+        :class:`PartialEmoji`
+            The partial emoji from this string.
+        """
+        match = cls._CUSTOM_EMOJI_RE.match(value)
+        
+        if match is not None:
+            groups = match.groupdict()
+            animated = bool(groups['animated'])
+            emoji_id = int(groups['id'])
+            name = groups['name']
+            return cls(name=name, animated=animated, id=emoji_id)
+        
+        return cls(name=value, id=None, animated=False)
 
     def to_dict(self):
         o = { 'name': self.name }
