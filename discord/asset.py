@@ -25,12 +25,133 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import io
-from .errors import DiscordException
-from .errors import InvalidArgument
+import os
+from typing import Optional, Any, Union
+
+import yarl
+
 from . import utils
+from .file import File
+from .errors import DiscordException, InvalidArgument
 
 VALID_STATIC_FORMATS = frozenset({"jpeg", "jpg", "webp", "png"})
 VALID_AVATAR_FORMATS = VALID_STATIC_FORMATS | {"gif"}
+
+MISSING = utils.MISSING
+
+class AssetMixin:
+    __slots__ = ()
+    url: str
+    _state: Optional[Any]
+    
+    async def read(self) -> bytes:
+        """|coro|
+        
+        Retrieves the content of this asset as a :class:`bytes` object.
+        
+        Raises
+        ------
+        DiscordException
+            There was no internal connection state.
+        HTTPException
+            Downloading the asset failed.
+        NotFound
+            The asset was deleted.
+            
+        Returns
+        -------
+        :class:`bytes`
+            The content of the asset.
+        """
+        if self._state is None:
+            raise DiscordException('Invalid state (no ConnectionState provided)')
+        
+        return await self._state.http.get_from_cdn(self.url)
+    
+    async def save(self, fp: Union[str, bytes, os.PathLike[Any], io.BufferedIOBase], *, seek_begin: bool = True) -> int:
+        """|coro|
+        
+        Saves this asset into a file-like object.
+        
+        Parameters
+        ----------
+        fp: Union[:class:`io.BufferedIOBase`, :class:`os.PathLike`]
+            The file-like object to save this asset to or the filename
+            to use. If a filename is passed then a file is created with that
+            filename and used instead.
+        seek_begin: :class:`bool`
+            Whether to seek to the beginning of the file after saving is
+            successfully done.
+            
+        Raises
+        ------
+        DiscordException
+            There was no internal connection state.
+        HTTPException
+            Downloading the asset failed.
+        NotFound
+            The asset was deleted.
+            
+        Returns
+        --------
+        :class:`int`
+            The number of bytes written.
+        """
+        data = await self.read()
+        if isinstance(fp , io.BufferedIOBase):
+            written = fp.write(data)
+            if seek_begin:
+                fp.seek(0)
+            return written
+        else:
+            with open(fp, 'wb') as f:
+                return f.write(data)
+            
+    async def to_file(
+        self,
+        *,
+        filename: Optional[str] = MISSING,
+        description: Optional[str] = MISSING,
+        spoiler: bool = False,
+    ) -> File:
+        """|coro|
+        
+        Converts the asset into a :class:`File` suitable for sending via
+        :meth:`abc.Messageable.send`.
+        
+        .. versionadded:: 1.7.420
+        
+        Parameters
+        -----------
+        filename: Optional[:class:`str`]
+            The filename of the file. If not provided, then the filename from
+            the asset's URL is used.
+        description: Optional[:class:`str`]
+            The description for the file.
+        spoiler: :class:`bool`
+            Whether the file is a spoiler.
+            
+        Raises
+        ------
+        DiscordException
+            The asset does not have an associated state.
+        ValueError
+            The asset is a unicode emoji.
+        TypeError
+            The asset is a sticker with lottie type.
+        HTTPException
+            Downloading the asset failed.
+        NotFound
+            The asset was deleted.
+            
+        Returns
+        -------
+        :class:`File`
+            The asset as a file suitable for sending.
+        """
+        data = await self.read()
+        file_filename = filename if filename is not MISSING else yarl.URL(self.url).name
+        return File(io.BytesIO(data), filename=file_filename, description=description, spoiler=spoiler)  # type: ignore
 
 class Asset:
     """Represents a CDN asset on Discord.
