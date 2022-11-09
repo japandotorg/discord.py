@@ -1,5 +1,8 @@
 from typing import Optional, TypedDict
 
+from .snowflake import Snowflake, SnowflakeList
+from .user import User
+
 
 class PartialEmoji(TypedDict):
     id: Optional[Snowflake]
