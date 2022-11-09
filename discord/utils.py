@@ -38,7 +38,7 @@ import json
 import re
 import warnings
 
-from typing import Any, Iterator, Type
+from typing import Any, Iterator, Type, Optional
 
 from .errors import InvalidArgument
 
@@ -126,7 +126,7 @@ class SequenceProxy(collections.abc.Sequence):
 
 def parse_time(timestamp):
     if timestamp:
-        return datetime.datetime(*map(int, re.split(r'[^\d]', timestamp.replace('+00:00', ''))))
+        return datetime.datetime(*map(int, re.split(r'[^\d]', timestamp.replace('+00:00', ''))))  # type: ignore
     return None
 
 def copy_doc(original):
@@ -317,7 +317,7 @@ def _unique(iterable):
     adder = seen.add
     return [x for x in iterable if not (x in seen or adder(x))]
 
-def _get_as_snowflake(data, key):
+def _get_as_snowflake(data: Any, key: str) -> Optional[int]:
     try:
         value = data[key]
     except KeyError:
@@ -434,7 +434,7 @@ class SnowflakeList(array.array):
     __slots__ = ()
 
     def __new__(cls, data, *, is_sorted=False):
-        return array.array.__new__(cls, 'Q', data if is_sorted else sorted(data))
+        return array.array.__new__(cls, 'Q', data if is_sorted else sorted(data))  # type: ignore
 
     def add(self, element):
         i = bisect_left(self, element)
