@@ -151,14 +151,17 @@ class Enum(metaclass=EnumMeta):
 
 
 class ChannelType(Enum):
-    text     = 0
-    private  = 1
-    voice    = 2
-    group    = 3
-    category = 4
-    news     = 5
-    store    = 6
-    stage_voice = 13
+    text           = 0
+    private        = 1
+    voice          = 2
+    group          = 3
+    category       = 4
+    news           = 5
+    news_thread    = 10
+    public_thread  = 11
+    private_thread = 12
+    stage_voice    = 13
+    forum          = 15
 
     def __str__(self):
         return self.name
@@ -458,6 +461,48 @@ class StickerType(Enum):
     png = 1
     apng = 2
     lottie = 3
+    
+class ComponentType(Enum):
+    action_row = 1
+    button = 2
+    select = 3
+    string_select = 3
+    text_input = 4
+    user_select = 5
+    role_select = 6
+    mentionable_select = 7
+    channel_select = 8
+    
+    def __init__(self) -> int:
+        return self.value
+
+class ButtonStyle(Enum):
+    primary = 1
+    secondary = 2
+    success = 3
+    danger = 4
+    link = 5
+
+    # Aliases
+    blurple = 1
+    grey = 2
+    gray = 2
+    green = 3
+    red = 4
+    url = 5
+    
+    def __int__(self) -> int:
+        return self.value
+    
+class TextStyle(Enum):
+    short = 1
+    paragraph = 2
+
+    # Aliases
+    long = 2
+    
+    def __int__(self) -> int:
+        return self.value
 
 def try_enum(cls, val):
     """A function that tries to turn the value into enum ``cls``.
