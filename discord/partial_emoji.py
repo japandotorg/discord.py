@@ -30,6 +30,11 @@ from . import utils
 
 class _EmojiTag:
     __slots__ = ()
+    
+    id: int
+    
+    def _to_partial(self) -> PartialEmoji: # type: ignore
+        raise NotImplementedError
 
 class PartialEmoji(_EmojiTag):
     """Represents a "partial" emoji.
