@@ -38,10 +38,29 @@ import json
 import re
 import warnings
 
+from typing import Any, Iterator, Type
+
 from .errors import InvalidArgument
 
 DISCORD_EPOCH = 1420070400000
 MAX_ASYNCIO_SECONDS = 3456000
+
+class _MissingSentinel:
+    __slots__ = ()
+    
+    def __eq__(self, other) -> bool:
+        return False
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __hash__(self) -> int:
+        return 0
+
+    def __repr__(self):
+        return '...'
+    
+MISSING: Any = _MissingSentinel()
 
 class cached_property:
     def __init__(self, function):
@@ -362,6 +381,13 @@ async def sane_wait_for(futures, *, timeout):
         raise asyncio.TimeoutError()
 
     return done
+
+def get_slots(cls: Type[Any]) -> Iterator[str]:
+    for mro in reversed(cls.__mro__):
+        try:
+            yield from mro.__slots__ # type: ignore
+        except AttributeError:
+            continue
 
 async def sleep_until(when, result=None):
     """|coro|
