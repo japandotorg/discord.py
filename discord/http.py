@@ -31,6 +31,8 @@ import sys
 import weakref
 import datetime
 from urllib.parse import quote as _uriquote
+from typing_extensions import Self
+from types import TracebackType
 from typing import (
     Any,
     ClassVar,
@@ -38,13 +40,9 @@ from typing import (
     Dict,
     Iterable,
     List,
-    Literal,
     NamedTuple,
     Optional,
-    overload,
     Sequence,
-    Tuple,
-    TYPE_CHECKING,
     Type,
     TypeVar,
     Union,
@@ -58,21 +56,15 @@ from .gateway import DiscordClientWebSocketResponse
 from . import __version__, utils, message
 from .mentions import AllowedMentions
 from .utils import MISSING
+from .embeds import Embed
+from .message import Attachment
 
 log = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    from typing_extensions import Self
-    from types import TracebackType
 
-    from .embeds import Embed
-    from .message import Attachment
-    from .enums import AuditLogAction
-
-
-    T = TypeVar('T')
-    BE = TypeVar('BE', bound=BaseException)
-    Response = Coroutine[Any, Any, T]
+T = TypeVar('T')
+BE = TypeVar('BE', bound=BaseException)
+Response = Coroutine[Any, Any, T]
 
 async def json_or_text(response: aiohttp.ClientResponse) -> Union[Dict[str, Any], str]:
     text = await response.text(encoding='utf-8')
