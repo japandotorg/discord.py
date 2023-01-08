@@ -28,18 +28,53 @@ import asyncio
 import json
 import logging
 import sys
-from urllib.parse import quote as _uriquote
 import weakref
+import datetime
+from urllib.parse import quote as _uriquote
+from typing import (
+    Any,
+    ClassVar,
+    Coroutine,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    NamedTuple,
+    Optional,
+    overload,
+    Sequence,
+    Tuple,
+    TYPE_CHECKING,
+    Type,
+    TypeVar,
+    Union,
+)
 
 import aiohttp
 
-from .errors import HTTPException, Forbidden, NotFound, LoginFailure, DiscordServerError, GatewayNotFound
+from .file import File
+from .errors import HTTPException, Forbidden, NotFound, LoginFailure, DiscordServerError, GatewayNotFound, RateLimited
 from .gateway import DiscordClientWebSocketResponse
-from . import __version__, utils
+from . import __version__, utils, message
+from .mentions import AllowedMentions
+from .utils import MISSING
 
 log = logging.getLogger(__name__)
 
-async def json_or_text(response):
+if TYPE_CHECKING:
+    from typing_extensions import Self
+    from types import TracebackType
+
+    from .embeds import Embed
+    from .message import Attachment
+    from .enums import AuditLogAction
+
+
+    T = TypeVar('T')
+    BE = TypeVar('BE', bound=BaseException)
+    Response = Coroutine[Any, Any, T]
+
+async def json_or_text(response: aiohttp.ClientResponse) -> Union[Dict[str, Any], str]:
     text = await response.text(encoding='utf-8')
     try:
         if response.headers['content-type'] == 'application/json':
@@ -50,26 +85,220 @@ async def json_or_text(response):
 
     return text
 
-class Route:
-    BASE = 'https://discord.com/api/v7'
+class MultipartParameters(NamedTuple):
+    payload: Optional[Dict[str, Any]]
+    multipart: Optional[List[Dict[str, Any]]]
+    files: Optional[Sequence[File]]
 
-    def __init__(self, method, path, **parameters):
-        self.path = path
-        self.method = method
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+            self,
+            exc_type: Optional[Type[BE]],
+            exc: Optional[BE],
+            traceback: Optional[TracebackType],
+    ) -> None:
+        if self.files:
+            for file in self.files:
+                file.close()
+
+
+def handle_message_parameters(
+    content: Optional[str] = MISSING,
+    *,
+    username: str = MISSING,
+    avatar_url: Any = MISSING,
+    tts: bool = False,
+    nonce: Optional[Union[int, str]] = None,
+    file: File = MISSING,
+    files: Sequence[File] = MISSING,
+    embed: Optional[Embed] = MISSING,
+    embeds: Sequence[Embed] = MISSING,
+    attachments: Sequence[Union[Attachment, File]] = MISSING,
+    allowed_mentions: Optional[AllowedMentions] = MISSING,
+    message_reference: Optional[message.MessageReference] = MISSING,
+    previous_allowede_mentions: Optional[AllowedMentions] = MISSING,
+    mention_author: Optional[bool] = None,
+    channel_payload: Dict[str, Any] = MISSING,
+ ) -> MultipartParameters:
+    if files is not MISSING and file is not MISSING:
+        raise TypeError('Cannot mix file and files keyword argument.')
+
+    if embeds is not MISSING and embed is not MISSING:
+        raise TypeError('Cannot mis embed and embeds keyword argument.')
+
+    if file is not MISSING:
+        files = [file]
+
+    if attachments is not MISSING and files is not MISSING:
+        raise TypeError('Cannot mix attachments and files keyword arguments.')
+
+    payload = {}
+    if embeds is not MISSING:
+        if len(embeds) > 10:
+            raise ValueError('embeds has maximum of 10 elements')
+        payload['embeds'] = [e.to_dict() for e in embeds]
+
+    if embed is not MISSING:
+        if embed is None:
+            payload['embeds'] = []
+        else:
+            payload['embeds'] = [embed.to_dict()]
+
+    if content is not MISSING:
+        if content is not None:
+            payload['content'] = str(content)
+        else:
+            payload['content'] = None
+
+    if nonce is not None:
+        payload['nonce'] = str(nonce)
+
+    if message_reference is not MISSING:
+        payload['message_reference'] = message_reference
+
+    payload['tts'] = tts
+
+    if avatar_url:
+        payload['avatar_url'] = str(avatar_url)
+
+    if username:
+        payload['username'] = username
+
+    if allowed_mentions:
+        if previous_allowede_mentions is not None:
+            payload['allowed_mentions'] = previous_allowede_mentions.merge(allowed_mentions)
+        else:
+            payload['allowed_mentions'] = allowed_mentions.to_dict()
+    elif previous_allowede_mentions is not None:
+        payload['allowed_mentions'] = previous_allowede_mentions.to_dict()
+
+    if mention_author is not None:
+        if 'allowed_mentions' not in payload:
+            payload['allowed_mentions'] = AllowedMentions().to_dict()
+        payload['allowed_mentions']['replied_user'] = mention_author
+
+    if attachments is MISSING:
+        attachments = files
+    else:
+        files = [a for a in attachments if isinstance(a, File)]
+
+    if attachments is not MISSING:
+        file_index = 0
+        attachments_payload = []
+        for attachment in attachments:
+            if isinstance(attachment, File):
+                attachments_payload.append(attachment.to_dict(file_index))
+                file_index += 1
+            else:
+                attachments_payload.append(attachment.to_dict())
+
+        payload['attachments'] = attachments_payload
+
+    if channel_payload is not MISSING:
+        payload = {
+            'message': payload,
+        }
+        payload.update(channel_payload)
+
+    multipart = []
+    if files:
+        multipart.append({
+            'name': 'payload_json',
+            'value': utils._to_json(payload)
+        })
+        payload = None
+        for index, file in enumerate(files):
+            multipart.append(
+                {
+                    'name': f'files[{index}]',
+                    'value': file.fp,
+                    'filename': file.filename,
+                    'content_type': 'application/octet-stream',
+                }
+            )
+
+    return MultipartParameters(payload=payload, multipart=multipart, files=files)
+
+
+
+INTERNAL_API_BASE: str = "https://discord.com/api"
+INTERNAL_API_VERSION: int = 7
+
+
+def _set_api_version(value: int):
+    api_list = (
+        6, 7, 8, 9, 10,
+    )
+
+    global INTERNAL_API_VERSION
+
+    if not isinstance(value, int):
+        raise TypeError(f'expected int not {value.__class__.__name__}')
+
+    if value not in api_list:
+        raise ValueError(f'expected {api_list} not {value}')
+
+    INTERNAL_API_VERSION = value
+    Route.BASE = f"{INTERNAL_API_BASE}/v{value}"
+
+def _set_api_base(value: str):
+    global INTERNAL_API_BASE
+
+    if not isinstance(value, str):
+        raise TypeError(f'expected str not {value.__class__.__name__}')
+
+    INTERNAL_API_BASE = value
+    Route.BASE = f"{value}/v{INTERNAL_API_VERSION}"
+
+
+class Route:
+    BASE: ClassVar[str] = 'https://discord.com/api/v7'
+
+    def __init__(self, method: str, path: str, *, metadata: Optional[str] = None, **parameters: Any) -> None:
+        self.path: str = path
+        self.method: str = method
+        # Metadata is a special string used to differentiate between known sub rate limits
+        # Since these can't be handled generically, this is the next best way to do so.
+        self.metadata: Optional[str] = metadata
         url = (self.BASE + self.path)
         if parameters:
             self.url = url.format(**{k: _uriquote(v) if isinstance(v, str) else v for k, v in parameters.items()})
         else:
-            self.url = url
+            self.url: str = url
 
         # major parameters:
-        self.channel_id = parameters.get('channel_id')
-        self.guild_id = parameters.get('guild_id')
+        self.channel_id: Optional[int] = parameters.get('channel_id')
+        self.guild_id: Optional[int] = parameters.get('guild_id')
+        self.webhook_id: Optional[int] = parameters.get('webhook_id')
+        self.webhook_token: Optional[int] = parameters.get('webhook_token')
+
+    @property
+    def key(self) -> str:
+        """
+        The bucket key is used to represent the route in various mappings.
+        """
+        if self.metadata:
+            return f"{self.method} {self.path}:{self.metadata}"
+        return f"{self.method} {self.path}"
+
+    @property
+    def major_parameters(self) -> str:
+        """
+        Returns the major parameters formatted a string.
+
+        This needs to be appended to a bucket hash to constitute as a full rate limit key.
+        """
+        return '+'.join(
+    str(k) for k in (self.channel_id, self.guild_id, self.webhook_id, self.webhook_token) if k is not None
+    )
 
     @property
     def bucket(self):
         # the bucket is just method + path w/ major parameters
         return '{0.channel_id}:{0.guild_id}:{0.path}'.format(self)
+
 
 class MaybeUnlock:
     def __init__(self, lock):
@@ -86,9 +315,160 @@ class MaybeUnlock:
         if self._unlock:
             self.lock.release()
 
+
+class Ratelimit:
+    """
+    Represents a Discord rate limit.
+    """
+
+    __slots__ = (
+        'limit',
+                'remaining',
+                'outgoing',
+                'reset_after',
+                'expires',
+                'dirty',
+                '_last_request',
+                '_max_ratelimit_timeout',
+                '_loop',
+                '_pending_requests',
+                '_sleeping',
+    )
+
+    def __init__(
+            self,
+            max_ratelimit_timeout: Optional[float]
+    ) -> None:
+        self.limit: int = 1
+        self.remaining: int = self.limit
+        self.outgoing: int = 0
+        self.reset_after: float = 0.0
+        self.expires: Optional[float] = None
+        self.dirty: bool = False
+        self._max_ratelimit_timeout: Optional[float] = max_ratelimit_timeout
+        self._loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
+        self._pending_requests: deque[asyncio.Future[Any]] = deque()
+
+        self._sleeping: asyncio.Lock = asyncio.Lock()
+        self._last_request: float = self._loop.time()
+
+    def __repr__(self) -> str:
+        return (
+            f'<RatelimitBucket limit={self.limit}> remaining={self.remaining} pending_requests={len(self._pending_requests)}'
+        )
+
+    def reset(self):
+        self.remaining = self.limit - self.outgoing
+        self.expires = None
+        self.reset_after = 0.0
+        self.dirty = False
+
+    def update(self, response: aiohttp.ClientResponse, *, use_clock: bool = False) -> None:
+        headers = response.headers
+        self.limit = int(headers.get('X-Ratelimit-Limit', 1))
+
+        if self.dirty:
+            self.remaining = min(int(headers.get('X-Ratelimit-Remaining', 0)), self.limit - self.outgoing)
+        else:
+            self.remaining = int(headers.get('X-Ratelimit-Remaining', 0))
+            self.dirty = True
+
+        reset_after = headers.get('X-Ratelimit-Reset-After')
+        if use_clock or not reset_after:
+            utc = datetime.timezone.utc
+            now = datetime.datetime.now(utc)
+            reset = datetime.datetime.fromtimestamp(float(headers['X-Ratelimit-Reset']), utc)
+            self.reset_after = (reset - now).total_seconds()
+        else:
+            self.reset_after = float(reset_after)
+
+        self.expires = self._loop.time() + self.reset_after
+
+    def _wake_next(self) -> None:
+        while self._pending_requests:
+            future = self._pending_requests.popleft()
+            if not future.done():
+                future.set_result(None)
+                break
+
+    def _wake(self, count: int = 1, *, exception: Optional[RateLimited] = None) -> None:
+        awaken = 0
+        while self._pending_requests:
+            future = self._pending_requests.popleft()
+            if not future.done():
+                if exception:
+                    future.set_exception(exception)
+                else:
+                    future.set_result(None)
+                awaken += 1
+
+            if awaken >= count:
+                break
+
+    async def _refresh(self) -> None:
+        error = self._max_ratelimit_timeout and self.reset_after > self._max_ratelimit_timeout
+        exception = RateLimited(self.reset_after) if error else None
+        async with self._sleeping:
+            if not error:
+                await asyncio.sleep(self.reset_after)
+
+        self.reset()
+        self._wake(self.remaining, exception=exception)
+
+    def is_expired(self) -> bool:
+        return self.expires is not None and self._loop.time() > self.expires
+
+    def is_inactive(self) -> bool:
+        delta = self._loop.time() - self._last_request
+        return delta >= 300 and self.outgoing == 0 and len(self._pending_requests) == 0
+
+    async def acquire(self) -> None:
+        self._last_request = self._loop.time()
+        if self.is_expired():
+            self.reset()
+
+        if self._max_ratelimit_timeout is not None and self.expires is not None:
+            current_reset_after = self.expires - self._loop.time()
+            if current_reset_after > self._max_ratelimit_timeout:
+                raise RateLimited(current_reset_after)
+
+        while self.remaining <= 0:
+            future = self._loop.create_future()
+            self._pending_requests.append(future)
+            try:
+                await future
+            except:
+                future.cancel()
+                if self.remaining >= 0 and not future.cancelled():
+                    self._wake_next()
+                raise
+
+        self.remaining -= 1
+        self.outgoing += 1
+
+    async def __aenter__(self) -> Self:
+        await self.acquire()
+        return self
+
+    async def __aexit__(self, exc_type: Type[BE], exc_val: BE, exc_tb: TracebackType) -> None:
+        self.outgoing -= 1
+        tokens = self.remaining - self.outgoing
+        if not self._sleeping.locked():
+            if tokens <= 0:
+                await self._refresh()
+            elif self._pending_requests:
+                exception = (
+                    RateLimited(self.reset_after)
+                    if self._max_ratelimit_timeout and self.reset_after > self._max_ratelimit_timeout
+                    else None
+                )
+                self._wake(tokens, exception=exception)
+
+
 # For some reason, the Discord voice websocket expects this header to be
 # completely lowercase while aiohttp respects spec and does it as case-insensitive
 aiohttp.hdrs.WEBSOCKET = 'websocket'
+
 
 class HTTPClient:
     """Represents an HTTP client sending HTTP requests to the Discord API."""
@@ -96,21 +476,47 @@ class HTTPClient:
     SUCCESS_LOG = '{method} {url} has received {text}'
     REQUEST_LOG = '{method} {url} with {json} has returned {status}'
 
-    def __init__(self, connector=None, *, proxy=None, proxy_auth=None, loop=None, unsync_clock=True):
-        self.loop = asyncio.get_event_loop() if loop is None else loop
-        self.connector = connector
-        self.__session = None # filled in static_login
+    def __init__(self,
+        connector: Optional[aiohttp.BaseConnector] = None,
+        *,
+        proxy: Optional[str] = None,
+        proxy_auth: Optional[aiohttp.BasicAuth] = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        unsync_clock: bool = True,
+        http_trace: Optional[aiohttp.TraceConfig] = None,
+        max_ratelimit_timeout: Optional[float] = None,
+    ) -> None:
+        self.loop: asyncio.AbstractEventLoop = asyncio.get_event_loop() if loop is None else loop
+        self.connector: aiohttp.BaseConnector = connector or MISSING
+        self.__session: aiohttp.ClientSession = MISSING # filled in static_login
+        # Route key -> Bucket hash
+        self._bucket_hashes: Dict[str, str] = {}
+        # Bucket Hash + Major Parameters -> Rate Limit
+        # or
+        # Route key + Major Paramters -> Rate Limit
+        # When the key is the latter, it is used for temporary
+        # one shot requests that don't have a bucket hash
+        # When this reaches 26 elements, it will try to evict based off of expiry
+        self._buckets: Dict[str, Ratelimit] = {}
         self._locks = weakref.WeakValueDictionary()
-        self._global_over = asyncio.Event()
+        self._global_over: asyncio.Event = asyncio.Event()
         self._global_over.set()
-        self.token = None
-        self.bot_token = False
-        self.proxy = proxy
-        self.proxy_auth = proxy_auth
-        self.use_clock = not unsync_clock
+        self.token: Optional[str] = None
+        self.bot_token: bool = False
+        self.proxy: Optional[str] = proxy
+        self.proxy_auth: Optional[aiohttp.BasicAuth] = proxy_auth
+        self.use_clock: bool = not unsync_clock
+        self.max_ratelimit_timeout: Optional[float] = max(30.0, max_ratelimit_timeout) if max_ratelimit_timeout else None
 
         user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
         self.user_agent = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
+        
+        if not INTERNAL_API_BASE.startswith("https://discord.com/api"):
+            self.request = self.request_without_ratelimiter
+            
+    def clear(self) -> None:
+        self.__session and self.__session.closed:
+            self.__session = MISSING
 
     def recreate(self):
         if self.__session.closed:
@@ -130,8 +536,31 @@ class HTTPClient:
         }
 
         return await self.__session.ws_connect(url, **kwargs)
+    
+    def _try_clear_expired_ratelimits(self) -> None:
+        if len(self._buckets) < 256:
+            return
+        
+        keys = [key for key, bucket in self._buckets.items() if bucket.is_inactive()]
+        for key in keys:
+            del self._buckets[key]
+            
+    def get_ratelimit(self, key: str) -> Ratelimit:
+        try:
+            value = self._buckets[key]
+        except KeyError:
+            self._buckets[key] = value = Ratelimit(self.max_ratelimit_timeout)
+            self._try_clear_expired_ratelimits()
+        return value
 
-    async def request(self, route, *, files=None, form=None, **kwargs):
+    async def request(
+        self, 
+        route: Route, 
+        *, 
+        files: Optional[Sequence[File]] = None, 
+        form: Optional[Iterable[Dict[str, Any]]] = None, 
+        **kwargs: Any,
+    ) -> Any:
         bucket = route.bucket
         method = route.method
         url = route.url
@@ -265,6 +694,8 @@ class HTTPClient:
                 raise DiscordServerError(r, data)
 
             raise HTTPException(r, data)
+        
+    async def request_without_ratelimiter()
 
     async def get_from_cdn(self, url):
         async with self.__session.get(url) as resp:
