@@ -514,10 +514,7 @@ class HTTPClient:
         
         if not INTERNAL_API_BASE.startswith("https://discord.com/api"):
             self.request = self.request_without_ratelimiter
-            
-    def clear(self) -> None:
-        self.__session and self.__session.closed:
-            self.__session = MISSING
+    
 
     def recreate(self):
         if self.__session.closed:
