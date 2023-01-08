@@ -761,7 +761,7 @@ class HTTPClient:
                             
                             if response.status == 403:
                                 raise Forbidden(response, data)
-                            elif response.status = 404:
+                            elif response.status == 404:
                                 raise NotFound(response, data)
                             elif response.status >= 500:
                                 raise DiscordServerError(response, data)
