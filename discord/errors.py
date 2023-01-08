@@ -50,6 +50,32 @@ class GatewayNotFound(DiscordException):
         message = 'The gateway to connect to discord was not found.'
         super(GatewayNotFound, self).__init__(message)
 
+
+class RateLimited(DiscordException):
+    """
+    Exception that's raised for when status code 429 occurs
+    and the timeout is greater than the configured maximum using
+    the ``max_ratelimit_timeout`` paramter in :class:`Client`.
+
+    The is not raised during global ratelimits.
+
+    Since sometimes requests are halted pro-emptively before they're
+    even made, this **does not** subclass :exc:`HTTPEception`.
+
+    .. versionadded:: 1.7.666
+
+    Attributes
+    ----------
+    retry_after: :class:`float`
+        The amount of seconds that the client should wait before retrying
+        the request.
+    """
+
+    def __init__(self, retry_after: float):
+        self.retry_after: float = retry_after
+        super().__init__(f'Too many requests. Retry in {retry_after:.2f} seconds.')
+        
+
 def flatten_error_dict(d, key=''):
     items = []
     for k, v in d.items():

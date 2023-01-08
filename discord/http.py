@@ -507,6 +507,7 @@ class HTTPClient:
         self.proxy_auth: Optional[aiohttp.BasicAuth] = proxy_auth
         self.use_clock: bool = not unsync_clock
         self.max_ratelimit_timeout: Optional[float] = max(30.0, max_ratelimit_timeout) if max_ratelimit_timeout else None
+        self.http_trace: Optional[aiohttp.TraceConfig] = http_trace
 
         user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
         self.user_agent = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
@@ -695,7 +696,94 @@ class HTTPClient:
 
             raise HTTPException(r, data)
         
-    async def request_without_ratelimiter()
+    async def request_without_ratelimiter(
+        self,
+        route: Route,
+        *,
+        files: Optional[Sequence[File]] = None,
+        form: Optional[Iterable[Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> Any:
+        method = route.method
+        url = route.url
+        
+        headers: Dict[str, str] = {
+            'User-Agent': self.user_agent,
+        }
+        
+        if 'json' in kwargs:
+            headers['Content-Type'] = 'application/json'
+            kwargs['data'] = utils._to_json(kwargs.pop('json'))
+            
+        try:
+            reason = kwargs.pop('reason')
+        except KeyError:
+            pass
+        else:
+            if reason:
+                headers['X-Audit-Log-Reason'] = _uriquote(reason, safe='/ ')
+                
+                kwargs['headers'] = headers
+                
+                if self.proxy is not None:
+                    kwargs['proxy'] = self.proxy
+                if self.proxy_auth is not None:
+                    kwargs['proxy_auth'] = self.proxy_auth
+                    
+                response: Optional[aiohttp.ClientResponse] = None
+                data: Optional[Union[Dict[str, Any], str]] = None
+                for tries in range(5):
+                    if files:
+                        for f in files:
+                            f.reset(seek=tries)
+                            
+                    if form:
+                        form_data = aiohttp.FormData(quote_fields=False)
+                        for params in form:
+                            form_data.add_field(**params)
+                        kwargs['data'] = form_data
+                        
+                    try:
+                        async with self.__session.request(method, url, **kwargs) as response:
+                            log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), response.status)
+                            
+                            data = await json_or_text(response)
+                            
+                            if 300 > response.status >= 200:
+                                log.debug('%s %s has recieved %s', method, url, data)
+                                return data
+                            
+                            if response.status == 429:
+                                if not response.headers.get('Via') or isinstance(data, str):
+                                    raise HTTPException(response, data)
+                                
+                                if data.get('code'):
+                                    await asyncio.sleep(data['retry_after'])
+                                    
+                                continue
+                            
+                            if response.status == 403:
+                                raise Forbidden(response, data)
+                            elif response.status = 404:
+                                raise NotFound(response, data)
+                            elif response.status >= 500:
+                                raise DiscordServerError(response, data)
+                            else:
+                                raise HTTPException(response, data)
+                            
+                    except OSError as e:
+                        if tries < 4 and e.errno in (54, 10054):
+                            await asyncio.sleep(1 + tries * 2)
+                            continue
+                        raise
+                    
+                if response is not None:
+                    if response.status >= 500:
+                        raise DiscordServerError(response, data)
+                    
+                    raise HTTPException(response, data)
+                
+                raise RuntimeError('Unreachable code in HTTP handling.')
 
     async def get_from_cdn(self, url):
         async with self.__session.get(url) as resp:
@@ -721,9 +809,16 @@ class HTTPClient:
 
     # login management
 
-    async def static_login(self, token, *, bot):
+    async def static_login(self, token: str, *, bot):
         # Necessary to get aiohttp to stop complaining about session creation
-        self.__session = aiohttp.ClientSession(connector=self.connector, ws_response_class=DiscordClientWebSocketResponse)
+        if self.connector is MISSING:
+            self.connector = aiohttp.TCPConnector(limit=0)
+            
+        self.__session = aiohttp.ClientSession(
+            connector=self.connector, 
+            ws_response_class=DiscordClientWebSocketResponse,
+            trace_configs=None if self.http_trace is None else [self.http_trace]
+        )
         old_token, old_bot = self.token, self.bot_token
         self._token(token, bot=bot)
 
@@ -742,14 +837,14 @@ class HTTPClient:
 
     # Group functionality
 
-    def start_group(self, user_id, recipients):
+    def start_group(self, user_id, recipients: List[int]):
         payload = {
             'recipients': recipients
         }
 
         return self.request(Route('POST', '/users/{user_id}/channels', user_id=user_id), json=payload)
 
-    def leave_group(self, channel_id):
+    def leave_group(self, channel_id) -> Response[None]:
         return self.request(Route('DELETE', '/channels/{channel_id}', channel_id=channel_id))
 
     def add_group_recipient(self, channel_id, user_id):
@@ -804,7 +899,7 @@ class HTTPClient:
 
         return self.request(r, json=payload)
 
-    def send_typing(self, channel_id):
+    def send_typing(self, channel_id) -> Response[None]:
         return self.request(Route('POST', '/channels/{channel_id}/typing', channel_id=channel_id))
 
     def send_files(self, channel_id, *, files, content=None, tts=False, embed=None, nonce=None, allowed_mentions=None, message_reference=None):
@@ -949,7 +1044,7 @@ class HTTPClient:
 
         return self.request(r)
 
-    def ban(self, user_id, guild_id, delete_message_days=1, reason=None):
+    def ban(self, user_id, guild_id, delete_message_days: int = 1, reason: Optional[str] = None) -> Response[None]:
         r = Route('PUT', '/guilds/{guild_id}/bans/{user_id}', guild_id=guild_id, user_id=user_id)
         params = {
             'delete_message_days': delete_message_days,
@@ -961,7 +1056,7 @@ class HTTPClient:
 
         return self.request(r, params=params)
 
-    def unban(self, user_id, guild_id, *, reason=None):
+    def unban(self, user_id, guild_id, *, reason: Optional[str] = None):
         r = Route('DELETE', '/guilds/{guild_id}/bans/{user_id}', guild_id=guild_id, user_id=user_id)
         return self.request(r, reason=reason)
 
@@ -1110,12 +1205,14 @@ class HTTPClient:
         return self.request(Route('POST', '/guilds'), json=payload)
 
     def edit_guild(self, guild_id, *, reason=None, **fields):
-        valid_keys = ('name', 'region', 'icon', 'afk_timeout', 'owner_id',
-                      'afk_channel_id', 'splash', 'verification_level',
-                      'system_channel_id', 'default_message_notifications',
-                      'description', 'explicit_content_filter', 'banner',
-                      'system_channel_flags', 'rules_channel_id',
-                      'public_updates_channel_id', 'preferred_locale',)
+        valid_keys = (
+            'name', 'region', 'icon', 'afk_timeout', 'owner_id',
+            'afk_channel_id', 'splash', 'verification_level',
+            'system_channel_id', 'default_message_notifications',
+            'description', 'explicit_content_filter', 'banner',
+            'system_channel_flags', 'rules_channel_id',
+            'public_updates_channel_id', 'preferred_locale',
+        )
 
         payload = {
             k: v for k, v in fields.items() if k in valid_keys
@@ -1401,7 +1498,7 @@ class HTTPClient:
         if zlib:
             value = '{0}?encoding={1}&v={2}&compress=zlib-stream'
         else:
-            value = '{0}?encoding={1}&v={2}'
+            value = '{0}?encoding={1}&v={2}&compress='
         return value.format(data['url'], encoding, v)
 
     async def get_bot_gateway(self, *, encoding='json', v=6, zlib=True):
@@ -1413,7 +1510,7 @@ class HTTPClient:
         if zlib:
             value = '{0}?encoding={1}&v={2}&compress=zlib-stream'
         else:
-            value = '{0}?encoding={1}&v={2}'
+            value = '{0}?encoding={1}&v={2}&compress='
         return data['shards'], value.format(data['url'], encoding, v)
 
     def get_user(self, user_id):

@@ -37,11 +37,51 @@ from operator import attrgetter
 import json
 import re
 import warnings
+from typing import Any
 
 from .errors import InvalidArgument
 
 DISCORD_EPOCH = 1420070400000
 MAX_ASYNCIO_SECONDS = 3456000
+
+try:
+    import orjson
+except ModuleNotFoundError:
+    HAS_ORJSON = False
+else:
+    HAS_ORJSON = True
+
+if HAS_ORJSON:
+    def _to_json(obj: Any) -> str:
+        return orjson.dumps(obj).decode('utf-8')
+
+    _from_json = orjson.loads
+
+else:
+    def _to_json(obj: Any) -> str:
+        return json.dumps(obj, separators=(',', ':'), ensure_ascii=True)
+
+    _from_json = json.loads
+
+
+class _MissingSentinel:
+    __slots__ = ()
+
+    def __eq__(self, other) -> bool:
+        return False
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __hash__(self) -> int:
+        return 0
+
+    def __repr__(self):
+        return "..."
+
+
+MISSING: Any = _MissingSentinel()
+
 
 class cached_property:
     def __init__(self, function):
@@ -56,6 +96,7 @@ class cached_property:
         setattr(instance, self.function.__name__, value)
 
         return value
+
 
 class CachedSlotProperty:
     def __init__(self, name, function):
@@ -74,10 +115,12 @@ class CachedSlotProperty:
             setattr(instance, self.name, value)
             return value
 
+
 def cached_slot_property(name):
     def decorator(func):
         return CachedSlotProperty(name, func)
     return decorator
+
 
 class SequenceProxy(collections.abc.Sequence):
     """Read-only proxy of a Sequence."""
@@ -110,12 +153,14 @@ def parse_time(timestamp):
         return datetime.datetime(*map(int, re.split(r'[^\d]', timestamp.replace('+00:00', ''))))
     return None
 
+
 def copy_doc(original):
     def decorator(overriden):
         overriden.__doc__ = original.__doc__
         overriden.__signature__ = _signature(original)
         return overriden
     return decorator
+
 
 def deprecated(instead=None):
     def actual_decorator(func):
@@ -132,6 +177,7 @@ def deprecated(instead=None):
             return func(*args, **kwargs)
         return decorated
     return actual_decorator
+
 
 def oauth_url(client_id, permissions=None, guild=None, redirect_uri=None, scopes=None):
     """A helper function that returns the OAuth2 URL for inviting the bot
