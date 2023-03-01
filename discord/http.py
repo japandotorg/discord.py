@@ -1487,7 +1487,7 @@ class HTTPClient:
         if zlib:
             value = '{0}?encoding={1}&v={2}&compress=zlib-stream'
         else:
-            value = '{0}?encoding={1}&v={2}&compress='
+            value = '{0}?encoding={1}&v={2}'
         return value.format(data['url'], encoding, v)
 
     async def get_bot_gateway(self, *, encoding='json', v=6, zlib=False):
@@ -1499,7 +1499,7 @@ class HTTPClient:
         if zlib:
             value = '{0}?encoding={1}&v={2}&compress=zlib-stream'
         else:
-            value = '{0}?encoding={1}&v={2}&compress='
+            value = '{0}?encoding={1}&v={2}'
         return data['shards'], value.format(data['url'], encoding, v)
 
     def get_user(self, user_id):
