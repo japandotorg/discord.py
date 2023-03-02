@@ -26,8 +26,14 @@ DEALINGS IN THE SOFTWARE.
 
 import discord.abc
 import discord.utils
+from discord.ext import commands
 
-class Context(discord.abc.Messageable):
+from typing import Union, TypeVar, Generic
+
+_Bot = Union['commands.Bot', 'commands.AutoShardedBot']
+BotT = TypeVar('BotT', bound=_Bot, covariant=True)
+
+class Context(discord.abc.Messageable, Generic[BotT]):
     r"""Represents the context in which a command is being invoked under.
 
     This class contains a lot of meta data to help you understand more about
