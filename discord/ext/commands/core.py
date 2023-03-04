@@ -29,8 +29,6 @@ import functools
 import inspect
 import typing
 import datetime
-from typing import TypeVar, Optional, TYPE_CHECKING, Generic, Any, Dict
-from typing_extensions import ParamSpec, Self
 
 import discord
 
@@ -40,14 +38,6 @@ from . import converter as converters
 from ._types import _BaseCommand
 from .cog import Cog
 
-CogT = TypeVar('CogT', bound='Optional[Cog]')
-
-T = TypeVar('T')
-
-if TYPE_CHECKING:
-    P = ParamSpec('P')
-else:
-    P = TypeVar('P')
 
 __all__ = (
     'Command',
@@ -139,7 +129,7 @@ class _CaseInsensitiveDict(dict):
     def __setitem__(self, k, v):
         super().__setitem__(k.casefold(), v)
 
-class Command(_BaseCommand, Generic[CogT, P, T]):
+class Command(_BaseCommand):
     r"""A class that implements the protocol for a bot text command.
 
     These are not created manually, instead they are created via the
@@ -206,10 +196,8 @@ class Command(_BaseCommand, Generic[CogT, P, T]):
         which calls converters. If ``False`` then cooldown processing is done
         first and then the converters are called second. Defaults to ``False``.
     """
-    
-    __original_kwargs__: Dict[str, Any]
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
+    def __new__(cls, *args, **kwargs):
         # if you're wondering why this is done, it's because we need to ensure
         # we have a complete original copy of **kwargs even for classes that
         # mess with it by popping before delegating to the subclass __init__.
@@ -282,7 +270,7 @@ class Command(_BaseCommand, Generic[CogT, P, T]):
         self.require_var_positional = kwargs.get('require_var_positional', False)
         self.ignore_extra = kwargs.get('ignore_extra', True)
         self.cooldown_after_parsing = kwargs.get('cooldown_after_parsing', False)
-        self._cog: CogT = None # type: ignore # This breaks every other pyright release
+        self.cog = None
 
         # bandaid for the fact that sometimes parent can be the bot instance
         parent = kwargs.get('parent')
@@ -301,14 +289,6 @@ class Command(_BaseCommand, Generic[CogT, P, T]):
             self._after_invoke = None
         else:
             self.after_invoke(after_invoke)
-            
-    @property
-    def cog(self) -> CogT:
-        return self._cog
-    
-    @cog.setter
-    def cog(self, value: CogT) -> None:
-        self._cog = value
 
     @property
     def callback(self):
@@ -1109,7 +1089,7 @@ class Command(_BaseCommand, Generic[CogT, P, T]):
         finally:
             ctx.command = original
 
-class GroupMixin(Generic[CogT]):
+class GroupMixin:
     """A mixin that implements common functionality for classes that behave
     similar to :class:`.Group` and are allowed to register commands.
 
@@ -1303,7 +1283,7 @@ class GroupMixin(Generic[CogT]):
 
         return decorator
 
-class Group(GroupMixin[CogT], Command[CogT, P, T]):
+class Group(GroupMixin, Command):
     """A class that implements a grouping protocol for commands to be
     executed as subcommands.
 
