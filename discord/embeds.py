@@ -25,6 +25,8 @@ DEALINGS IN THE SOFTWARE.
 """
 
 import datetime
+from typing import Optional, Any
+from typing_extensions import Self
 
 from . import utils
 from .colour import Colour
@@ -332,29 +334,30 @@ class Embed:
         """
         return EmbedProxy(getattr(self, '_thumbnail', {}))
 
-    def set_thumbnail(self, *, url):
+    def set_thumbnail(self, *, url: Optional[Any]) -> Self:
         """Sets the thumbnail for the embed content.
-
+        
         This function returns the class instance to allow for fluent-style
         chaining.
-
+        
         .. versionchanged:: 1.4
-            Passing :attr:`Empty` removes the thumbnail.
-
+            Passing ``None`` removes the thumbnail.
+        
         Parameters
         -----------
         url: :class:`str`
             The source URL for the thumbnail. Only HTTP(S) is supported.
+            Inline attachment URLs are also supported, see :ref:`local_image`.
         """
 
-        if url is EmptyEmbed:
+        if url is None:
             try:
                 del self._thumbnail
             except AttributeError:
                 pass
         else:
             self._thumbnail = {
-                'url': str(url)
+                'url': str(url),
             }
 
         return self
