@@ -93,7 +93,7 @@ class _DefaultRepr:
 
 _default = _DefaultRepr()
 
-class BotBase(GroupMixin[None]):
+class BotBase(GroupMixin):
     def __init__(self, command_prefix, help_command=_default, description=None, **options):
         super().__init__(**options)
         self.command_prefix = command_prefix
