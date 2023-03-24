@@ -508,6 +508,8 @@ class HTTPClient:
         #     self.request = self.request_with_ratelimiter
         # else:
         #     self.request = self.request
+        
+        self.request = self.request_without_ratelimiter
 
     def recreate(self):
         if self.__session.closed:
@@ -686,7 +688,7 @@ class HTTPClient:
 
             raise HTTPException(r, data)
         
-    async def request(
+    async def request_without_ratelimiter(
         self,
         route: Route,
         *,
