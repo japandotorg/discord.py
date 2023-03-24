@@ -695,10 +695,14 @@ class HTTPClient:
         method = route.method
         url = route.url
         
-        headers: Dict[str, str] = {
+        headers = {
             'User-Agent': self.user_agent,
+            'X-Ratelimit-Precision': 'millisecond',
         }
         
+        if self.token is not None:
+            headers['Authorization'] = 'Bot ' + self.token if self.bot_token else self.token
+        # some checking if it's a JSON request
         if 'json' in kwargs:
             headers['Content-Type'] = 'application/json'
             kwargs['data'] = utils._to_json(kwargs.pop('json'))
@@ -710,68 +714,80 @@ class HTTPClient:
         else:
             if reason:
                 headers['X-Audit-Log-Reason'] = _uriquote(reason, safe='/ ')
-                
-                kwargs['headers'] = headers
-                
-                if self.proxy is not None:
-                    kwargs['proxy'] = self.proxy
-                if self.proxy_auth is not None:
-                    kwargs['proxy_auth'] = self.proxy_auth
+
+        kwargs['headers'] = headers
+        
+        # Proxy support
+        if self.proxy is not None:
+            kwargs['proxy'] = self.proxy
+        if self.proxy_auth is not None:
+            kwargs['proxy_auth'] = self.proxy_auth
+            
+        response: Optional[aiohttp.ClientResponse] = None
+        data: Optional[Union[Dict[str, Any], str]] = None
+        for tries in range(5):
+            if files:
+                for f in files:
+                    f.reset(seek=tries)
                     
-                response: Optional[aiohttp.ClientResponse] = None
-                data: Optional[Union[Dict[str, Any], str]] = None
-                for tries in range(5):
-                    if files:
-                        for f in files:
-                            f.reset(seek=tries)
-                            
-                    if form:
-                        form_data = aiohttp.FormData(quote_fields=False)
-                        for params in form:
-                            form_data.add_field(**params)
-                        kwargs['data'] = form_data
+            if form:
+                form_data = aiohttp.FormData()
+                for params in form:
+                    form_data.add_field(**params)
+                kwargs['data'] = form_data
+                
+            try:
+                async with self.__session.request(method, url, **kwargs) as response:
+                    log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), r.status)
+                    
+                    data = await json_or_text(response)
+                    
+                    if 300 > response.status >= 200:
+                            log.debug('%s %s has received %s', method, url, data)
+                            return data
                         
-                    try:
-                        async with self.__session.request(method, url, **kwargs) as response:
-                            log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), response.status)
-                            
-                            data = await json_or_text(response)
-                            
-                            if 300 > response.status >= 200:
-                                log.debug('%s %s has recieved %s', method, url, data)
-                                return data
-                            
-                            if response.status == 429:
-                                if not response.headers.get('Via') or isinstance(data, str):
-                                    raise HTTPException(response, data)
-                                
-                                if data.get('code'):
-                                    await asyncio.sleep(data['retry_after'])
-                                    
-                                continue
-                            
-                            if response.status == 403:
-                                raise Forbidden(response, data)
-                            elif response.status == 404:
-                                raise NotFound(response, data)
-                            elif response.status >= 500:
-                                raise DiscordServerError(response, data)
-                            else:
-                                raise HTTPException(response, data)
-                            
-                    except OSError as e:
-                        if tries < 4 and e.errno in (54, 10054):
-                            await asyncio.sleep(1 + tries * 2)
-                            continue
-                        raise
+                    if response.status in {500, 502, 504, 524}:
+                        await asyncio.sleep(1 + tries * 2)
+                        continue
+
+                    # we are being rate limited
+                    if response.status == 429:
+                        if not response.headers.get('Via') or isinstance(data, str):
+                            # Banned by Cloudflare more than likely.
+                            raise HTTPException(response, data)
+                        
+                        if data.get("code") == 20028:
+                            await asyncio.sleep(data['retry_after'])
+
+                        continue
                     
-                if response is not None:
-                    if response.status >= 500:
+                    if response.status == 403:
+                        raise Forbidden(response, data)
+                    elif response.status == 404:
+                        raise NotFound(response, data)
+                    elif response.status >= 500:
                         raise DiscordServerError(response, data)
+                    else:
+                        raise HTTPException(response, data)
                     
-                    raise HTTPException(response, data)
-                
-                raise RuntimeError('Unreachable code in HTTP handling.')
+            # This is handling exceptions from the request
+            except OSError as e:
+                # Connection reset by peer
+                if tries < 4 and e.errno in (54, 10054):
+                    await asyncio.sleep(1 + tries * 2)
+                    continue
+                raise
+
+        if response is not None:
+            # We've run out of retries, raise.
+            if response.status >= 500:
+                raise DiscordServerError(response, data)
+
+            raise HTTPException(response, data)
+
+        raise RuntimeError('Unreachable code in HTTP handling')
+
+        
 
     async def get_from_cdn(self, url):
         async with self.__session.get(url) as resp:
