@@ -740,7 +740,7 @@ class HTTPClient:
                 
             try:
                 async with self.__session.request(method, url, **kwargs) as response:
-                    log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), r.status)
+                    log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), response.status)
                     
                     data = await json_or_text(response)
                     
