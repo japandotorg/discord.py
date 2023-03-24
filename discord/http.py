@@ -504,7 +504,7 @@ class HTTPClient:
         user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
         self.user_agent = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
         
-        if INTERNAL_API_BASE.startswith("https://discord.com/api"):
+        if INTERNAL_API_BASE == "https://discord.com/api":
             self.request = self.request_with_ratelimiter
 
     def recreate(self):
