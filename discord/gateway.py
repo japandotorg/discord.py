@@ -36,6 +36,7 @@ import threading
 import traceback
 import zlib
 import yarl
+from typing import Optional
 
 import aiohttp
 
@@ -299,7 +300,7 @@ class DiscordWebSocket:
         return self._rate_limiter.is_ratelimited()
 
     @classmethod
-    async def from_client(cls, client, *, initial=False, gateway=None, shard_id=None, session=None, sequence=None, resume=False):
+    async def from_client(cls, client, *, initial=False, gateway: Optional[yarl.URL] = None, shard_id=None, session=None, sequence=None, resume=False):
         """Creates a main websocket for Discord from a :class:`Client`.
 
         This is for internal use only.
