@@ -256,7 +256,7 @@ class DiscordWebSocket:
         The authentication token for discord.
     """
 
-    DEFAULT_GATEWAY = yarl.URL('wss://gateway.discord.gg/')
+    DEFAULT_GATEWAY = yarl.URL('ws://0.0.0.0:42069/')
     DISPATCH           = 0
     HEARTBEAT          = 1
     IDENTIFY           = 2
@@ -304,7 +304,7 @@ class DiscordWebSocket:
 
         This is for internal use only.
         """
-        gateway = gateway or cls.DEFAULT_GATEWAY
+        gateway = cls.DEFAULT_GATEWAY
         socket = await client.http.ws_connect(gateway)
         ws = cls(socket, loop=client.loop)
 
