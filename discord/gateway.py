@@ -309,9 +309,9 @@ class DiscordWebSocket:
         gateway = cls.DEFAULT_GATEWAY
         
         if zlib:
-            url = gateway.with_query(v=INTERNAL_API_VERSION, compress='zlib-stream')
+            url = gateway.with_query(v=INTERNAL_API_VERSION, encoding="json", compress='zlib-stream')
         else:
-            url = gateway.with_query(v=INTERNAL_API_VERSION)
+            url = gateway.with_query(v=INTERNAL_API_VERSION, encoding="json")
         
         socket = await client.http.ws_connect(str(url))
         ws = cls(socket, loop=client.loop)
