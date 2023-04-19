@@ -36,7 +36,6 @@ import threading
 import traceback
 import zlib
 import yarl
-from typing import Optional
 
 import aiohttp
 
@@ -300,7 +299,7 @@ class DiscordWebSocket:
         return self._rate_limiter.is_ratelimited()
 
     @classmethod
-    async def from_client(cls, client, *, initial=False, gateway: Optional[yarl.URL] = None, shard_id=None, session=None, sequence=None, resume=False):
+    async def from_client(cls, client, *, initial=False, gateway=None, shard_id=None, session=None, sequence=None, resume=False):
         """Creates a main websocket for Discord from a :class:`Client`.
 
         This is for internal use only.
@@ -310,9 +309,9 @@ class DiscordWebSocket:
         gateway = gateway or cls.DEFAULT_GATEWAY
         
         if zlib:
-            url = gateway.with_query(v=INTERNAL_API_VERSION, encoding="json", compress='zlib-stream')
+            url = cls.DEFAULT_GATEWAY.with_query(v=INTERNAL_API_VERSION, encoding="json", compress='zlib-stream')
         else:
-            url = gateway.with_query(v=INTERNAL_API_VERSION, encoding="json")
+            url = cls.DEFAULT_GATEWAY.with_query(v=INTERNAL_API_VERSION, encoding="json")
         
         socket = await client.http.ws_connect(str(url))
         ws = cls(socket, loop=client.loop)
