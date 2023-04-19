@@ -35,6 +35,7 @@ import time
 import threading
 import traceback
 import zlib
+import yarl
 
 import aiohttp
 
@@ -255,6 +256,7 @@ class DiscordWebSocket:
         The authentication token for discord.
     """
 
+    DEFAULT_GATEWAY = yarl.URL('wss://gateway.discord.gg/')
     DISPATCH           = 0
     HEARTBEAT          = 1
     IDENTIFY           = 2
@@ -302,7 +304,7 @@ class DiscordWebSocket:
 
         This is for internal use only.
         """
-        gateway = gateway or await client.http.get_gateway()
+        gateway = gateway or cls.DEFAULT_GATEWAY
         socket = await client.http.ws_connect(gateway)
         ws = cls(socket, loop=client.loop)
 
