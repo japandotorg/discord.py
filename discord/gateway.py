@@ -313,7 +313,7 @@ class DiscordWebSocket:
         else:
             url = cls.DEFAULT_GATEWAY.with_query(v=INTERNAL_API_VERSION, encoding="json")
         
-        socket = await client.http.ws_connect(str(url))
+        socket = await client.http.ws_connect(gateway)
         ws = cls(socket, loop=client.loop)
 
         # dynamically add attributes needed
