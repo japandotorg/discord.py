@@ -304,15 +304,7 @@ class DiscordWebSocket:
 
         This is for internal use only.
         """
-        from .http import INTERNAL_API_VERSION
-        
-        gateway = gateway or cls.DEFAULT_GATEWAY
-        
-        if zlib:
-            url = cls.DEFAULT_GATEWAY.with_query(v=INTERNAL_API_VERSION, encoding="json", compress='zlib-stream')
-        else:
-            url = cls.DEFAULT_GATEWAY.with_query(v=INTERNAL_API_VERSION, encoding="json")
-        
+        gateway = gateway or await client.http.get_gateway()
         socket = await client.http.ws_connect(gateway)
         ws = cls(socket, loop=client.loop)
 
