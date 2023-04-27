@@ -292,7 +292,7 @@ def _set_api_base(value: str):
 
 
 class Route:
-    BASE: ClassVar[str] = 'https://discord.com/api/v10'
+    BASE: ClassVar[str] = 'https://discord.com/api/v9'
 
     def __init__(self, method: str, path: str, *, metadata: Optional[str] = None, **parameters: Any) -> None:
         self.path: str = path
