@@ -266,6 +266,7 @@ def handle_message_parameters(
 
 
 INTERNAL_API_VERSION: int = 10
+INTERNAL_API_BASE: str = "https://discord.com/api"
 
 
 def _set_api_version(value: int):
@@ -279,6 +280,15 @@ def _set_api_version(value: int):
 
     INTERNAL_API_VERSION = value
     Route.BASE = f'https://discord.com/api/v{value}'
+    
+def _set_api_base(value: str):
+    global INTERNAL_API_BASE
+
+    if not isinstance(value, str):
+        raise TypeError(f'expected str not {value.__class__.__name__}')
+
+    INTERNAL_API_BASE = value
+    Route.BASE = f"{value}/v{INTERNAL_API_VERSION}"
 
 
 class Route:
@@ -515,6 +525,11 @@ class HTTPClient:
 
         user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
         self.user_agent: str = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
+
+        if Route.BASE.startswith("https://discord.com/api"):
+            self.request = self.request_with_ratelimiter
+        else:
+            self.request = self.request
 
     def clear(self) -> None:
         if self.__session and self.__session.closed:
@@ -759,6 +774,109 @@ class HTTPClient:
                 raise HTTPException(response, data)
 
             raise RuntimeError('Unreachable code in HTTP handling')
+        
+    async def request_without_ratelimiter(
+        self,
+        route: Route,
+        *,
+        files: Optional[Sequence[File]] = None,
+        form: Optional[Iterable[Dict[str, Any]]] = None,
+        **kwargs: Any,
+    ) -> Any:
+        method = route.method
+        url = route.url
+        
+        headers = {
+            'User-Agent': self.user_agent,
+            'X-Ratelimit-Precision': 'millisecond',
+        }
+        
+        if self.token is not None:
+            headers['Authorization'] = 'Bot ' + self.token if self.token else self.token
+        # some checking if it's a JSON request
+        if 'json' in kwargs:
+            headers['Content-Type'] = 'application/json'
+            kwargs['data'] = utils._to_json(kwargs.pop('json'))
+            
+        try:
+            reason = kwargs.pop('reason')
+        except KeyError:
+            pass
+        else:
+            if reason:
+                headers['X-Audit-Log-Reason'] = _uriquote(reason, safe='/ ')
+
+        kwargs['headers'] = headers
+        
+        # Proxy support
+        if self.proxy is not None:
+            kwargs['proxy'] = self.proxy
+        if self.proxy_auth is not None:
+            kwargs['proxy_auth'] = self.proxy_auth
+            
+        response: Optional[aiohttp.ClientResponse] = None
+        data: Optional[Union[Dict[str, Any], str]] = None
+        for tries in range(5):
+            if files:
+                for f in files:
+                    f.reset(seek=tries)
+                    
+            if form:
+                form_data = aiohttp.FormData()
+                for params in form:
+                    form_data.add_field(**params)
+                kwargs['data'] = form_data
+                
+            try:
+                async with self.__session.request(method, url, **kwargs) as response:
+                    _log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), response.status)
+                    
+                    data = await json_or_text(response)
+                    
+                    if 300 > response.status >= 200:
+                            _log.debug('%s %s has received %s', method, url, data)
+                            return data
+                        
+                    if response.status in {500, 502, 504, 524}:
+                        await asyncio.sleep(1 + tries * 2)
+                        continue
+
+                    # we are being rate limited
+                    if response.status == 429:
+                        if not response.headers.get('Via') or isinstance(data, str):
+                            # Banned by Cloudflare more than likely.
+                            raise HTTPException(response, data)
+                        
+                        if data.get("code") == 20028:
+                            await asyncio.sleep(data['retry_after'])
+
+                        continue
+                    
+                    if response.status == 403:
+                        raise Forbidden(response, data)
+                    elif response.status == 404:
+                        raise NotFound(response, data)
+                    elif response.status >= 500:
+                        raise DiscordServerError(response, data)
+                    else:
+                        raise HTTPException(response, data)
+                    
+            # This is handling exceptions from the request
+            except OSError as e:
+                # Connection reset by peer
+                if tries < 4 and e.errno in (54, 10054):
+                    await asyncio.sleep(1 + tries * 2)
+                    continue
+                raise
+
+        if response is not None:
+            # We've run out of retries, raise.
+            if response.status >= 500:
+                raise DiscordServerError(response, data)
+
+            raise HTTPException(response, data)
+
+        raise RuntimeError('Unreachable code in HTTP handling')
 
     async def get_from_cdn(self, url: str) -> bytes:
         async with self.__session.get(url) as resp:
