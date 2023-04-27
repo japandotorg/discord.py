@@ -527,7 +527,10 @@ class HTTPClient:
         self.user_agent: str = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
 
         
-        self.request = self.request_without_ratelimiter
+        if Route.BASE.startswith("https://discord.com"):
+            self.request = self.request_with_ratelimiter
+        else:
+            self.request = self.request_without_ratelimiter
 
     def clear(self) -> None:
         if self.__session and self.__session.closed:
@@ -790,7 +793,7 @@ class HTTPClient:
         }
         
         if self.token is not None:
-            headers['Authorization'] = 'Bot ' + self.token if self.token else self.token
+            headers['Authorization'] = 'Bot ' + self.token if self.bot_token else self.token
         # some checking if it's a JSON request
         if 'json' in kwargs:
             headers['Content-Type'] = 'application/json'
