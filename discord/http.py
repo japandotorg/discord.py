@@ -525,6 +525,9 @@ class HTTPClient:
 
         user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
         self.user_agent: str = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
+        
+        if not INTERNAL_API_BASE.startswith("https://discord.com/api"):
+            self.request = self.request_without_ratelimiter
 
     def clear(self) -> None:
         if self.__session and self.__session.closed:
@@ -2489,7 +2492,7 @@ class HTTPClient:
     def application_info(self) -> Response[appinfo.AppInfo]:
         return self.request(Route('GET', '/oauth2/applications/@me'))
 
-    async def get_gateway(self, *, encoding: str = 'json', zlib: bool = True) -> str:
+    async def get_gateway(self, *, encoding: str = 'json', zlib: bool = False) -> str:
         try:
             data = await self.request(Route('GET', '/gateway'))
         except HTTPException as exc:
@@ -2497,10 +2500,10 @@ class HTTPClient:
         if zlib:
             value = '{0}?encoding={1}&v={2}&compress=zlib-stream'
         else:
-            value = '{0}?encoding={1}&v={2}'
+            value = '{0}?encoding={1}&v={2}&compress='
         return value.format(data['url'], encoding, INTERNAL_API_VERSION)
 
-    async def get_bot_gateway(self, *, encoding: str = 'json', zlib: bool = True) -> Tuple[int, str]:
+    async def get_bot_gateway(self, *, encoding: str = 'json', zlib: bool = False) -> Tuple[int, str]:
         try:
             data = await self.request(Route('GET', '/gateway/bot'))
         except HTTPException as exc:
@@ -2509,7 +2512,7 @@ class HTTPClient:
         if zlib:
             value = '{0}?encoding={1}&v={2}&compress=zlib-stream'
         else:
-            value = '{0}?encoding={1}&v={2}'
+            value = '{0}?encoding={1}&v={2}&compress='
         return data['shards'], value.format(data['url'], encoding, INTERNAL_API_VERSION)
 
     def get_user(self, user_id: Snowflake) -> Response[user.User]:
