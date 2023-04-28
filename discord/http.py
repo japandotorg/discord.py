@@ -526,8 +526,7 @@ class HTTPClient:
         user_agent = 'DiscordBot (https://github.com/Rapptz/discord.py {0}) Python/{1[0]}.{1[1]} aiohttp/{2}'
         self.user_agent: str = user_agent.format(__version__, sys.version_info, aiohttp.__version__)
         
-        if not INTERNAL_API_BASE.startswith("https://discord.com/api"):
-            self.request = self.request_without_ratelimiter
+        self.request = self.request_without_ratelimiter
 
     def clear(self) -> None:
         if self.__session and self.__session.closed:
@@ -564,7 +563,7 @@ class HTTPClient:
             self._try_clear_expired_ratelimits()
         return value
 
-    async def request(
+    async def request_with_ratelimiter(
         self,
         route: Route,
         *,
@@ -783,19 +782,17 @@ class HTTPClient:
     ) -> Any:
         method = route.method
         url = route.url
-        
-        headers = {
+
+        # header creation
+        headers: Dict[str, str] = {
             'User-Agent': self.user_agent,
-            'X-Ratelimit-Precision': 'millisecond',
         }
-        
-        if self.token is not None:
-            headers['Authorization'] = 'Bot ' + self.token if self.bot_token else self.token
+
         # some checking if it's a JSON request
         if 'json' in kwargs:
             headers['Content-Type'] = 'application/json'
             kwargs['data'] = utils._to_json(kwargs.pop('json'))
-            
+
         try:
             reason = kwargs.pop('reason')
         except KeyError:
@@ -805,51 +802,57 @@ class HTTPClient:
                 headers['X-Audit-Log-Reason'] = _uriquote(reason, safe='/ ')
 
         kwargs['headers'] = headers
-        
+
         # Proxy support
         if self.proxy is not None:
             kwargs['proxy'] = self.proxy
         if self.proxy_auth is not None:
             kwargs['proxy_auth'] = self.proxy_auth
-            
+
         response: Optional[aiohttp.ClientResponse] = None
         data: Optional[Union[Dict[str, Any], str]] = None
         for tries in range(5):
             if files:
                 for f in files:
                     f.reset(seek=tries)
-                    
+
             if form:
-                form_data = aiohttp.FormData()
+                # with quote_fields=True '[' and ']' in file field names are escaped, which discord does not support
+                form_data = aiohttp.FormData(quote_fields=False)
                 for params in form:
                     form_data.add_field(**params)
                 kwargs['data'] = form_data
-                
+
             try:
                 async with self.__session.request(method, url, **kwargs) as response:
                     _log.debug('%s %s with %s has returned %s', method, url, kwargs.get('data'), response.status)
-                    
+
+                    # even errors have text involved in them so this is safe to call
                     data = await json_or_text(response)
-                    
+
+                    # the request was successful so just return the text/json
                     if 300 > response.status >= 200:
-                            _log.debug('%s %s has received %s', method, url, data)
-                            return data
-                        
+                        _log.debug('%s %s has received %s', method, url, data)
+                        return data
+
+                    # we've received a 500, 502, 504, or 524, unconditional retry
                     if response.status in {500, 502, 504, 524}:
                         await asyncio.sleep(1 + tries * 2)
                         continue
 
-                    # we are being rate limited
+                    # we are being rate limited, retry as it should be handled on proxy side
                     if response.status == 429:
                         if not response.headers.get('Via') or isinstance(data, str):
                             # Banned by Cloudflare more than likely.
                             raise HTTPException(response, data)
-                        
+
+                        # Handle "The channel you are writing has hit the write rate limit "
                         if data.get("code") == 20028:
                             await asyncio.sleep(data['retry_after'])
 
                         continue
-                    
+
+                    # the usual error cases
                     if response.status == 403:
                         raise Forbidden(response, data)
                     elif response.status == 404:
@@ -858,7 +861,7 @@ class HTTPClient:
                         raise DiscordServerError(response, data)
                     else:
                         raise HTTPException(response, data)
-                    
+
             # This is handling exceptions from the request
             except OSError as e:
                 # Connection reset by peer
