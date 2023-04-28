@@ -787,6 +787,9 @@ class HTTPClient:
         headers: Dict[str, str] = {
             'User-Agent': self.user_agent,
         }
+        
+        if self.token is not None:
+            headers['Authorization'] = 'Bot ' + self.token
 
         # some checking if it's a JSON request
         if 'json' in kwargs:
