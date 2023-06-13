@@ -267,7 +267,7 @@ def handle_message_parameters(
 
 
 INTERNAL_API_VERSION: int = 10
-INTERNAL_API_BASE: str = "https;//discord.com/api"
+INTERNAL_API_BASE: str = "https://discord.com/api"
 
 
 def _set_api_version(value: int):
