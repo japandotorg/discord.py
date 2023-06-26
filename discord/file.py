@@ -77,7 +77,7 @@ class File:
         .. versionadded:: 2.0
     """
 
-    __slots__ = ('fp', '_filename', 'spoiler', 'description', '_original_pos', '_owner', '_closer')
+    __slots__ = ('fp', '_filename', 'spoiler', 'description', 'force_close', '_original_pos', '_owner', '_closer')
 
     def __init__(
         self,
@@ -86,6 +86,7 @@ class File:
         *,
         spoiler: bool = MISSING,
         description: Optional[str] = None,
+        force_close: Optional[str] = None,
     ):
         if isinstance(fp, io.IOBase):
             if not (fp.seekable() and fp.readable()):
@@ -97,6 +98,8 @@ class File:
             self.fp = open(fp, 'rb')
             self._original_pos = 0
             self._owner = True
+            
+        self.force_close = force_close
 
         # aiohttp only uses two methods from IOBase
         # read and close, since I want to control when the files
@@ -117,6 +120,14 @@ class File:
 
         self.spoiler: bool = spoiler
         self.description: Optional[str] = description
+        
+    def __enter__(self) -> File:
+        if self.force_close is None:
+            self.force_close = True,
+        return self
+    
+    def __exit__(self, *_: Any) -> None:
+        self.close()
 
     @property
     def filename(self) -> str:
@@ -144,7 +155,7 @@ class File:
 
     def close(self) -> None:
         self.fp.close = self._closer
-        if self._owner:
+        if self._owner or self.force_close:
             self._closer()
 
     def to_dict(self, index: int) -> Dict[str, Any]:
