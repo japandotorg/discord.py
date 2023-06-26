@@ -68,6 +68,7 @@ from .interactions import *
 from .components import *
 from .threads import *
 from .automod import *
+from .role_connections import *
 
 
 class VersionInfo(NamedTuple):

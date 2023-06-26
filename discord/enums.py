@@ -68,6 +68,7 @@ __all__ = (
     'AutoModRuleActionType',
     'ForumLayoutType',
     'ForumOrderType',
+    "RoleConnectionMetadataType",
 )
 
 if TYPE_CHECKING:
@@ -756,6 +757,17 @@ class ForumLayoutType(Enum):
 class ForumOrderType(Enum):
     latest_activity = 0
     creation_date = 1
+
+
+class RoleConnectionMetadataType(Enum):
+    integer_less_than_or_equal = 1
+    integer_greater_than_or_equal = 2
+    integer_equal = 3
+    integer_not_equal = 4
+    datetime_less_than_or_equal = 5
+    datetime_greater_than_or_equal = 6
+    boolean_equal = 7
+    boolean_not_equal = 8
 
 
 def create_unknown_value(cls: Type[E], val: Any) -> E:

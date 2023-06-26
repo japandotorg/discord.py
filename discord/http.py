@@ -91,6 +91,7 @@ if TYPE_CHECKING:
         scheduled_event,
         sticker,
         welcome_screen,
+        role_connections,
     )
     from .types.snowflake import Snowflake, SnowflakeList
 
@@ -2494,6 +2495,26 @@ class HTTPClient:
             Route('DELETE', '/guilds/{guild_id}/auto-moderation/rules/{rule_id}', guild_id=guild_id, rule_id=rule_id),
             reason=reason,
         )
+        
+    def get_role_connection_metdata(
+        self, application_id: Snowflake
+    ) -> Response[List[role_connections.ApplicationRoleConnectionMetadata]]:
+        return self.request(
+            Route('GET', '/applications/{application_id}/role-connections/metadata', application_id=application_id),
+        )
+        
+    def update_role_connection_metadata(
+        self,
+        application_id: Snowflake,
+        data: List[role_connections.ApplicationRoleConnectionMetadata],
+        *,
+        reason: Optional[str] = None,
+    ) -> Response[List[role_connections.ApplicationRoleConnectionMetadata]]:
+        return self.request(
+            Route('PUT', '/applications/{application_id}/role-connections/metadata', application_id=application_id),
+            json=data, reason=reason,
+        )
+        
 
     # Misc
 
