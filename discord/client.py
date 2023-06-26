@@ -938,7 +938,7 @@ class Client:
         """List[:class:`~discord.User`]: Returns a list of all the users the bot can see."""
         return list(self._connection._users.values())
 
-    def get_channel(self, id: int, /) -> Optional[Union[GuildChannel, Thread, PrivateChannel]]:
+    def get_channel(self, id: int, /) -> Optional[Union[GuildChannel, Thread, PrivateChannel, PartialMessageable]]:
         """Returns a channel or thread with the given ID.
 
         .. versionchanged:: 2.0
