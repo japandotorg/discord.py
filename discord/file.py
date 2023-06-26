@@ -48,6 +48,12 @@ def _strip_spoiler(filename: str) -> Tuple[str, bool]:
 class File:
     r"""A parameter object used for :meth:`abc.Messageable.send`
     for sending file objects.
+    
+    .. versionchanged:: 2.4.69
+        You can now use :class:`discord.File` as a context manager.
+        This will automatically call :meth:`close` when the context 
+        manager exists scope.
+        When using the context manager, force_close will default to True.
 
     .. note::
 
@@ -73,6 +79,8 @@ class File:
         to determine if the file is a spoiler.
     description: Optional[:class:`str`]
         The file description to display, currently only supported for images.
+    force_close: Optional[:class:`bool`]
+        If to forcefully close the file.
 
         .. versionadded:: 2.0
     """
