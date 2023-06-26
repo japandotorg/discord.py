@@ -53,6 +53,7 @@ from .invite import Invite
 from .template import Template
 from .widget import Widget
 from .guild import Guild
+from .guild_preview import GuildPreview
 from .emoji import Emoji
 from .channel import _threaded_channel_factory, PartialMessageable
 from .enums import ChannelType
@@ -2253,6 +2254,34 @@ class Client:
         """
         data = await self.http.get_guild(guild_id, with_counts=with_counts)
         return Guild(data=data, state=self._connection)
+    
+    async def fetch_guild_preview(self, guild_id: int, /) -> GuildPreview:
+        """|coro|
+        
+        Fetches a :class:`.GuildPreview` from an ID.
+        
+        .. note::
+            This will only fetch guilds that the bot is in or that are discoverable.
+            
+        .. versionadded:: 2.4.69
+        
+        Parameters
+        ----------
+        guild_id: :class:`int`
+            The guild's ID to fetch from.
+            
+        Raises
+        ------
+        :exc:`.NotFound`
+            The guild providedd is unknown.
+            
+        Returns
+        -------
+        :class:`.GuildPreview`
+            The guild preview from the ID. 
+        """
+        data = self.http.get_guild_preview(guild_id)
+        return GuildPreview(data=data, state=self._connection)
 
     async def create_guild(
         self,

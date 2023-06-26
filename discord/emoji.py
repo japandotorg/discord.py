@@ -23,7 +23,7 @@ DEALINGS IN THE SOFTWARE.
 """
 
 from __future__ import annotations
-from typing import Any, Collection, Iterator, List, Optional, TYPE_CHECKING, Tuple
+from typing import Any, Collection, Iterator, List, Optional, TYPE_CHECKING, Tuple, Union
 
 from .asset import Asset, AssetMixin
 from .utils import SnowflakeList, snowflake_time, MISSING
@@ -39,6 +39,7 @@ __all__ = (
 if TYPE_CHECKING:
     from .types.emoji import Emoji as EmojiPayload
     from .guild import Guild
+    from .guild_preview import GuildPreview
     from .state import ConnectionState
     from .abc import Snowflake
     from .role import Role
@@ -108,7 +109,7 @@ class Emoji(_EmojiTag, AssetMixin):
         'available',
     )
 
-    def __init__(self, *, guild: Guild, state: ConnectionState, data: EmojiPayload) -> None:
+    def __init__(self, *, guild: Union[Guild, GuildPreview], state: ConnectionState, data: EmojiPayload) -> None:
         self.guild_id: int = guild.id
         self._state: ConnectionState = state
         self._from_data(data)

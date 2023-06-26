@@ -28,6 +28,7 @@ from .partial_emoji import *
 from .activity import *
 from .channel import *
 from .guild import *
+from .guild_preview import *
 from .flags import *
 from .member import *
 from .message import *
