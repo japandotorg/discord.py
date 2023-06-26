@@ -38,8 +38,8 @@ class GuildPreview:
     
     def __init__(self, *, data: GuildPreviewPayload, state: ConnectionState) -> None:
         self._state: ConnectionState = state
-        self.id: int = int(data["id"])
-        self.name: str = data["name"]
+        self.id: int = int(data.get("id"))
+        self.name: str = data.get("name")
         self._icon: Optional[str] = data.get("icon")
         self._splash: Optional[str] = data.get("splash")
         self._discovery_splash: Optional[str] = data.get("discovery_splash")
