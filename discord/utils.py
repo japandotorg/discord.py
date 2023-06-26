@@ -73,6 +73,8 @@ import logging
 
 import yarl
 
+from .errors import HTTPException
+
 try:
     import orjson  # type: ignore
 except ModuleNotFoundError:
@@ -85,16 +87,24 @@ __all__ = (
     'oauth_url',
     'snowflake_time',
     'time_snowflake',
+    "snowflake_time",
     'find',
     'get',
+    "get_or_fetch",
     'sleep_until',
+    "parse_time",
     'utcnow',
     'remove_markdown',
     'escape_markdown',
     'escape_mentions',
     'maybe_coroutine',
+    "raw_mentions",
+    "raw_channel_mentions",
+    "raw_role_mentions",
     'as_chunks',
     'format_dt',
+    "generate_snowflake",
+    "filter_params",
     'MISSING',
     'setup_logging',
 )
@@ -596,6 +606,66 @@ def get(iterable: _Iter[T], /, **attrs: Any) -> Union[Optional[T], Coro[Optional
     )
 
 
+async def get_or_fetch(obj, attr: str, id: int, *, default: Any = MISSING) -> Any:
+    """|coro|
+
+    Attempts to get an attribute from the object in cache. If it fails, it will attempt to fetch it.
+    If the fetch also fails, an error will be raised.
+
+    Parameters
+    ----------
+    obj: Any
+        The object to use the get or fetch methods in
+    attr: :class:`str`
+        The attribute to get or fetch. Note the object must have both a ``get_`` and ``fetch_`` method for this attribute.
+    id: :class:`int`
+        The ID of the object
+    default: Any
+        The default value to return if the object is not found, instead of raising an error.
+
+    Returns
+    -------
+    Any
+        The object found or the default value.
+
+    Raises
+    ------
+    :exc:`AttributeError`
+        The object is missing a ``get_`` or ``fetch_`` method
+    :exc:`NotFound`
+        Invalid ID for the object
+    :exc:`HTTPException`
+        An error occurred fetching the object
+    :exc:`Forbidden`
+        You do not have permission to fetch the object
+
+    Examples
+    --------
+
+    Getting a guild from a guild ID: ::
+
+        guild = await utils.get_or_fetch(client, 'guild', guild_id)
+
+    Getting a channel from the guild. If the channel is not found, return None: ::
+
+        channel = await utils.get_or_fetch(guild, 'channel', channel_id, default=None)
+    """
+    getter = getattr(obj, f"get_{attr}")(id)
+    if getter is None:
+        try:
+            getter = await getattr(obj, f"fetch_{attr}")(id)
+        except AttributeError:
+            getter = await getattr(obj, f"_fetch_{attr}")(id)
+            if getter is None:
+                raise ValueError(f"Could not find {attr} with id {id} on {obj}")
+        except (HTTPException, ValueError):
+            if default is not MISSING:
+                return default
+            else:
+                raise
+    return getter
+
+
 def _unique(iterable: Iterable[T]) -> List[T]:
     return [x for x in dict.fromkeys(iterable)]
 
@@ -1011,6 +1081,60 @@ def escape_mentions(text: str) -> str:
     return re.sub(r'@(everyone|here|[!&]?[0-9]{17,20})', '@\u200b\\1', text)
 
 
+def raw_mentions(text: str) -> list[int]:
+    """Returns a list of user IDs matching ``<@user_id>`` in the string.
+
+    .. versionadded:: 2.2
+
+    Parameters
+    ----------
+    text: :class:`str`
+        The string to get user mentions from.
+
+    Returns
+    -------
+    List[:class:`int`]
+        A list of user IDs found in the string.
+    """
+    return [int(x) for x in re.findall(r"<@!?([0-9]+)>", text)]
+
+
+def raw_channel_mentions(text: str) -> list[int]:
+    """Returns a list of channel IDs matching ``<@#channel_id>`` in the string.
+
+    .. versionadded:: 2.2
+
+    Parameters
+    ----------
+    text: :class:`str`
+        The string to get channel mentions from.
+
+    Returns
+    -------
+    List[:class:`int`]
+        A list of channel IDs found in the string.
+    """
+    return [int(x) for x in re.findall(r"<#([0-9]+)>", text)]
+
+
+def raw_role_mentions(text: str) -> list[int]:
+    """Returns a list of role IDs matching ``<@&role_id>`` in the string.
+
+    .. versionadded:: 2.2
+
+    Parameters
+    ----------
+    text: :class:`str`
+        The string to get role mentions from.
+
+    Returns
+    -------
+    List[:class:`int`]
+        A list of role IDs found in the string.
+    """
+    return [int(x) for x in re.findall(r"<@&([0-9]+)>", text)]
+
+
 def _chunk(iterator: Iterable[T], max_size: int) -> Iterator[List[T]]:
     ret = []
     n = 0
@@ -1236,6 +1360,56 @@ def format_dt(dt: datetime.datetime, /, style: Optional[TimestampStyle] = None) 
     if style is None:
         return f'<t:{int(dt.timestamp())}>'
     return f'<t:{int(dt.timestamp())}:{style}>'
+
+
+def generate_snowflake(dt: Optional[datetime.datetime]) -> int:
+    """Returns a numeric snowflake pretending to be created at the given date but more accurate and random
+    than :func:`time_snowflake`. If dt is not passed, it makes one from the current time using utcnow.
+
+    Parameters
+    ----------
+    dt: :class:`datetime.datetime`
+        A datetime object to convert to a snowflake.
+        If naive, the timezone is assumed to be local time.
+
+    Returns
+    -------
+    :class:`int`
+        The snowflake representing the time given.
+    """
+    dt = dt or utcnow()
+    return int(dt.timestamp() * 1000 - DISCORD_EPOCH) << 22 | 0x3FFFFF
+
+
+def filter_params(params: Dict[str, Any], **kwargs: Dict[str, Optional[str]]) -> Dict[str, Any]:
+    """A helper function to filter out and replace certain keyword parameters
+
+    Parameters
+    ----------
+    params: Dict[str, Any]
+        The initial parameters to filter.
+    **kwargs: Dict[str, Optional[str]]
+        Key to value pairs where the key's contents would be moved to the
+        value, or if the value is None, remove key's contents (see code example).
+
+    Example
+    -------
+    .. code-block:: python3
+
+        >>> params = {"param1": 12, "param2": 13}
+        >>> filter_params(params, param1="param3", param2=None)
+        {'param3': 12}
+        # values of 'param1' is moved to 'param3'
+        # and values of 'param2' are completely removed.
+    """
+    for old_param, new_param in kwargs.items():
+        if old_param in params:
+            if new_param is None:
+                params.pop(old_param)
+            else:
+                params[new_param] = params.pop(old_param)
+
+    return params
 
 
 def is_docker() -> bool:
