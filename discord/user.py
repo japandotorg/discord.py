@@ -69,6 +69,7 @@ class BaseUser(_UserTag):
         '_avatar',
         '_banner',
         '_accent_colour',
+        "_avatar_decoration",
         'bot',
         'system',
         '_public_flags',
@@ -86,6 +87,7 @@ class BaseUser(_UserTag):
         _avatar: Optional[str]
         _banner: Optional[str]
         _accent_colour: Optional[int]
+        _avatar_decoration: Optional[str]
         _public_flags: int
 
     def __init__(self, *, state: ConnectionState, data: Union[UserPayload, PartialUserPayload]) -> None:
@@ -120,6 +122,7 @@ class BaseUser(_UserTag):
         self._avatar = data['avatar']
         self._banner = data.get('banner', None)
         self._accent_colour = data.get('accent_color', None)
+        self._avatar_decoration = data.get('avatar_decoration', None)
         self._public_flags = data.get('public_flags', 0)
         self.bot = data.get('bot', False)
         self.system = data.get('system', False)
@@ -135,6 +138,7 @@ class BaseUser(_UserTag):
         self._avatar = user._avatar
         self._banner = user._banner
         self._accent_colour = user._accent_colour
+        self._avatar_decoration = user._avatar_decoration
         self.bot = user.bot
         self._state = user._state
         self._public_flags = user._public_flags
@@ -219,6 +223,20 @@ class BaseUser(_UserTag):
         if self._accent_colour is None:
             return None
         return Colour(self._accent_colour)
+    
+    @property
+    def avatar_decoration(self) -> Optional[Asset]:
+        """Optional[:class:`Asset`]: Returns the user's avatar decoration, if applicable.
+        
+        .. versionadded:: 2.4.69
+        
+        .. note::
+        
+            This information is only available vis :meth:`Client.fetch_user`.
+        """
+        if self._avatar_decoration is None:
+            return None
+        return Asset._from_avatar_decoration(self._state, self.id, self._avatar_decoration)
 
     @property
     def accent_color(self) -> Optional[Colour]:

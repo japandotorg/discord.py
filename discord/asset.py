@@ -234,6 +234,19 @@ class Asset(AssetMixin):
             key=avatar,
             animated=animated,
         )
+        
+    @classmethod
+    def _from_avatar_decoration(cls, state: _State, user_id: int, decoration: str) -> Self:
+        animated = decoration.startswith('a_')
+        # some decoations are animated but they are returned as animated png, -
+        # - you can't get them as a gif (like stickers)
+        # their hashes start with a_
+        return cls(
+            state,
+            url=f"{cls.BASE}/avatar-decorations/{user_id}/{decoration}.png?size=1024",
+            key=decoration,
+            animated=animated,
+        )
 
     @classmethod
     def _from_guild_avatar(cls, state: _State, guild_id: int, member_id: int, avatar: str) -> Self:
