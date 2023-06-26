@@ -2280,7 +2280,7 @@ class Client:
         :class:`.GuildPreview`
             The guild preview from the ID. 
         """
-        data = self.http.get_guild_preview(guild_id)
+        data = await self.http.get_guild_preview(guild_id)
         return GuildPreview(data=data, state=self._connection)
 
     async def create_guild(
