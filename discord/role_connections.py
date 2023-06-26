@@ -70,6 +70,21 @@ class RoleConnectionMetadata:
             description_localizations=data.get("description_localizations"),
         )
 
+    def to_dict(self) -> RoleConnectionMetadataPayload:
+        data: RoleConnectionMetadataPayload = {
+            "type": self.type.value,
+            "key": self.key,
+            "name": self.name,
+            "description": self.description,
+        }
+
+        if (loc := self.name_localizations) is not None:
+            data["name_localizations"] = loc
+        if (loc := self.description_localizations) is not None:
+            data["description_localizations"] = loc
+
+        return data
+
     def __repr__(self) -> str:
         attrs = (
             ("type", self.type),
