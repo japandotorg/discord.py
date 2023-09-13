@@ -132,11 +132,12 @@ class KeepAliveHandler(threading.Thread):
         shard_id: Optional[int] = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(*args, **kwargs)
+        daemon: bool = kwargs.pop('daemon', True)
+        name: str = kwargs.pop('name', f'keep-alive-handler:shard-{shard_id}')
+        super().__init__(*args, daemon=daemon, name=name, **kwargs)
         self.ws: DiscordWebSocket = ws
         self._main_thread_id: int = ws.thread_id
         self.interval: Optional[float] = interval
-        self.daemon: bool = True
         self.shard_id: Optional[int] = shard_id
         self.msg: str = 'Keeping shard ID %s websocket alive with sequence %s.'
         self.block_msg: str = 'Shard ID %s heartbeat blocked for more than %s seconds.'
