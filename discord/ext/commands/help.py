@@ -293,6 +293,8 @@ class _HelpCommandImpl(Command):
         cog.get_commands = cog.get_commands.__wrapped__
         cog.walk_commands = cog.walk_commands.__wrapped__
         self.cog = None
+        # Revert `on_error` to use the original one in case of race conditions
+        self.on_error = self._injected.on_help_command_error
 
 
 class HelpCommand:
