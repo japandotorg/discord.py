@@ -2222,6 +2222,7 @@ class ForumChannel(discord.abc.GuildChannel, Hashable):
     def __init__(self, *, state: ConnectionState, guild: Guild, data: Union[ForumChannelPayload, MediaChannelPayload]):
         self._state: ConnectionState = state
         self.id: int = int(data['id'])
+        self._type: Literal[15, 16] = data['type']
         self._update(guild, data)
 
     def __repr__(self) -> str:
