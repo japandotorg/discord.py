@@ -2561,7 +2561,7 @@ class HTTPClient:
             )
         )
 
-    async def get_gateway(self, *, encoding: str = 'json', zlib: bool = True) -> str:
+    async def get_gateway(self, *, encoding: str = 'json', zlib: bool = False) -> str:
         try:
             data = await self.request(Route('GET', '/gateway'))
         except HTTPException as exc:
